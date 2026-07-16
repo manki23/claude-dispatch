@@ -126,6 +126,9 @@ class Agent:
     # Messages are picked up at turn boundaries (between SDK query() calls).
     _inbox: asyncio.Queue[str] = field(default_factory=asyncio.Queue, init=False, repr=False)
 
+    # The asyncio Task running agent.run() — set at the start of run(), cleared on exit.
+    _task: asyncio.Task | None = field(default=None, init=False, repr=False)
+
     # Lazily-created conversation thread (None until first converse() call).
     conversation: ConversationThread | None = field(default=None, repr=False)
 
@@ -154,6 +157,15 @@ class Agent:
         if self.on_log:
             self.on_log(line)
 
+    def cancel(self) -> None:
+        """Cancel the asyncio task running this agent and mark it KILLED.
+
+        Safe to call even if the agent is not running (no-op).
+        """
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+        self._set_status(AgentStatus.KILLED)
+
     def send_message(self, text: str) -> None:
         """Queue a user message to be delivered at the next turn boundary.
 
@@ -179,22 +191,30 @@ class Agent:
         Returns the session_id of the last completed turn (useful for DB
         persistence and future resume calls), or None on failure.
         """
+        self._task = asyncio.current_task()
         self._set_status(AgentStatus.RUNNING)
         current_prompt = prompt
         current_resume = resume_session_id
 
-        while True:
-            await self._run_turn(current_prompt, current_resume, system_prompt)
+        try:
+            while True:
+                await self._run_turn(current_prompt, current_resume, system_prompt)
 
-            # Propagate session_id for the next resume
-            current_resume = self.session_id
+                # Propagate session_id for the next resume
+                current_resume = self.session_id
 
-            # Drain one message from the inbox — if present, loop again
-            try:
-                current_prompt = self._inbox.get_nowait()
-                self._append_log("[resuming with queued message]")
-            except asyncio.QueueEmpty:
-                break
+                # Drain one message from the inbox — if present, loop again
+                try:
+                    current_prompt = self._inbox.get_nowait()
+                    self._append_log("[resuming with queued message]")
+                except asyncio.QueueEmpty:
+                    break
+        except asyncio.CancelledError:
+            self._set_status(AgentStatus.KILLED)
+            self._append_log("[killed]")
+            raise
+        finally:
+            self._task = None
 
         return self.session_id
 
