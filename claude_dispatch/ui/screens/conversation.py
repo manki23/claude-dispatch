@@ -17,25 +17,20 @@ from claude_dispatch.job import Job
 class ConversationScreen(Screen):
     """Chat-style screen for back-and-forth with one agent.
 
-    - Shows only user/assistant turns (no tool noise).
-    - Input at the bottom; Enter sends a message.
-    - Esc pops the screen; reopening reuses the existing thread.
-    - Live-updates as the agent replies via ConversationThread.on_reply.
+    - Shows only user/assistant turns (no tool noise) in the log.
+    - A slim status bar above the input shows live tool activity while
+      the agent is thinking (e.g. "[tool] Read(...)").
+    - Enter sends a message; Esc pops back; reopening reuses the thread.
 
     Optional ``system_prompt_factory``: if provided, called before each send
-    to produce a fresh system prompt (used by the dispatcher agent so it always
-    sees current job state). When None, routing goes through ``job.send_message``.
+    to produce a fresh system prompt (dispatcher agent — sees current job state).
+    When None, routing goes through ``job.send_message``.
     """
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
-
-    def action_dispatcher(self) -> None:
-        """Open dispatcher from any conversation (unless already in dispatcher)."""
-        if self._agent.spec.type.value != "dispatcher":
-            self.app.open_dispatcher_conversation()
 
     def __init__(
         self,
@@ -48,23 +43,32 @@ class ConversationScreen(Screen):
         self._job = job
         self._agent = agent
         self._thread: ConversationThread = agent.get_or_create_conversation()
-        self._prev_on_reply = self._thread.on_reply
+        self._prev_on_reply: Callable[[Turn], None] | None = self._thread.on_reply
+        self._prev_on_agent_log: Callable[[str], None] | None = None
+        self._awaiting_reply: bool = False
 
     def compose(self) -> ComposeResult:
         agent_type = self._agent.spec.type.value
         job_desc = self._job.description
-        status = self._agent.status.value
 
         with Vertical():
             yield Label(
                 f"[bold]{job_desc}[/bold] › [cyan]{agent_type}[/cyan]  "
-                f"[dim]status:[/dim] {status}  "
                 f"[dim]turns:[/dim] {len(self._thread.turns)}",
                 id="conv-header",
             )
             yield RichLog(id="conv-log", highlight=False, markup=True, wrap=True)
+            yield Label("", id="conv-activity")
             yield Input(placeholder="type a message… (Enter to send)", id="conv-input")
         yield Footer()
+
+    DEFAULT_CSS = """
+    #conv-activity {
+        height: 1;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
 
     def on_mount(self) -> None:
         log = self.query_one("#conv-log", RichLog)
@@ -73,25 +77,42 @@ class ConversationScreen(Screen):
         for turn in self._thread.turns:
             log.write(_format_turn(turn))
 
-        # Wire live callback.
+        # Wire reply callback — clears activity bar and appends the turn.
         def _live_reply(turn: Turn) -> None:
             if self._prev_on_reply:
                 self._prev_on_reply(turn)
+            self._awaiting_reply = False
+            self._set_activity("")
             self._append_turn(turn)
 
         self._thread.on_reply = _live_reply
+
+        # Wire agent log callback — shows tool activity in the status bar.
+        self._prev_on_agent_log = self._agent.on_log
+
+        def _activity_log(line: str) -> None:
+            if self._prev_on_agent_log:
+                self._prev_on_agent_log(line)
+            if self._awaiting_reply:
+                self._set_activity(f"· {line}")
+
+        self._agent.on_log = _activity_log
 
         # Focus input immediately.
         self.query_one("#conv-input", Input).focus()
 
     def on_unmount(self) -> None:
         self._thread.on_reply = self._prev_on_reply
+        self._agent.on_log = self._prev_on_agent_log
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         message = event.value.strip()
         if not message:
             return
         event.input.value = ""
+
+        self._awaiting_reply = True
+        self._set_activity("· thinking…")
 
         # Show the user turn immediately (don't wait for _run_turn to echo it).
         user_turn = Turn(role="user", text=message)
@@ -113,6 +134,8 @@ class ConversationScreen(Screen):
                 message, agent_type=self._agent.spec.type.value
             )
             if not delivered:
+                self._awaiting_reply = False
+                self._set_activity("")
                 self.notify(
                     f"Could not deliver message to '{self._agent.spec.type.value}'",
                     severity="warning",
@@ -127,7 +150,16 @@ class ConversationScreen(Screen):
         if at_bottom:
             log.scroll_end(animate=False)
 
+    def _set_activity(self, text: str) -> None:
+        """Update the slim activity bar above the input."""
+        self.query_one("#conv-activity", Label).update(text)
+
     # ── actions ────────────────────────────────────────────────────
+
+    def action_dispatcher(self) -> None:
+        """Open dispatcher from any conversation (unless already in dispatcher)."""
+        if self._agent.spec.type.value != "dispatcher":
+            self.app.open_dispatcher_conversation()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

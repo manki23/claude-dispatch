@@ -105,25 +105,35 @@ class AgentsScreen(Screen):
 
             self.app.push_screen(ConversationScreen(job=self._job, agent=agent))
 
-    async def action_message_agent(self) -> None:
+    def action_message_agent(self) -> None:
         agent = self._selected_agent()
         if not agent:
             return
         from claude_dispatch.ui.modals.prompt import PromptModal
 
-        message = await self.app.push_screen_wait(
+        agent_type = agent.spec.type.value
+
+        def on_dismiss(message: str | None) -> None:
+            if not message:
+                return
+
+            async def _deliver() -> None:
+                delivered = await self._job.send_message(message, agent_type=agent_type)
+                if not delivered:
+                    self.notify(
+                        f"Could not deliver message to '{agent_type}'",
+                        severity="warning",
+                    )
+
+            self.app.run_worker(_deliver(), exclusive=False)
+
+        self.app.push_screen(
             PromptModal(
-                label=f"→ {agent.spec.type.value} >",
+                label=f"→ {agent_type} >",
                 placeholder="message for this agent…",
-            )
+            ),
+            callback=on_dismiss,
         )
-        if message:
-            delivered = await self._job.send_message(message, agent_type=agent.spec.type.value)
-            if not delivered:
-                self.notify(
-                    f"Could not deliver message to '{agent.spec.type.value}'",
-                    severity="warning",
-                )
 
     def action_kill_agent(self) -> None:
         agent = self._selected_agent()
