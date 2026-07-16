@@ -28,6 +28,53 @@ def start(mock: bool) -> None:
 
 
 @main.command()
+@click.argument("description")
+def run(description: str) -> None:
+    """Run a job headlessly — no TUI, logs streamed to stdout.
+
+    DESCRIPTION is the task for the plan agent to decompose and execute.
+
+    Exits with code 0 on success, 1 on failure.
+    """
+    import asyncio
+    import sys
+
+    from claude_dispatch.config import load_config
+    from claude_dispatch.job import Job, JobStatus
+
+    config = load_config()
+    job = Job(description=description, config=config)
+
+    click.echo(f"[claude-dispatch] job {job.job_id} started: {description!r}")
+
+    def _on_agent_ready(agent) -> None:
+        """Attach a stdout log printer to every agent as soon as it is created."""
+        agent_type = agent.spec.type.value
+
+        def _log(line: str) -> None:
+            click.echo(f"[{agent_type}] {line}")
+
+        agent.on_log = _log
+
+    job.on_agent_ready = _on_agent_ready
+
+    try:
+        asyncio.run(job.run())
+    except Exception as exc:
+        click.echo(f"[claude-dispatch] job {job.job_id} failed: {exc}", err=True)
+        sys.exit(1)
+
+    if job.status == JobStatus.DONE:
+        click.echo(f"[claude-dispatch] job {job.job_id} done  cost=${job.cost_usd:.4f}")
+    else:
+        click.echo(
+            f"[claude-dispatch] job {job.job_id} status={job.status.value}",
+            err=True,
+        )
+        sys.exit(1)
+
+
+@main.command()
 def version() -> None:
     """Print version and exit."""
     click.echo(f"claude-dispatch {__version__}")
