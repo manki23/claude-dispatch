@@ -70,6 +70,7 @@ class AgentSpec:
     cwd: str | None = None
     allowed_tools: list[str] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)  # other agent type names
+    mcp_config_path: str | None = None  # path to MCP server config (e.g. ~/.claude.json)
 
 
 @dataclass
@@ -188,6 +189,7 @@ class Agent:
             resume=resume_session_id,
             system_prompt=system_prompt,
             hooks={"PostToolUse": [HookMatcher(hooks=[_track_cost])]},
+            mcp_servers=self.spec.mcp_config_path or {},
         )
 
         try:

@@ -172,6 +172,7 @@ class Job:
                 type=AgentType.PLAN,
                 model=self.config.defaults.plan_model,
                 cwd=str(self.workdir),
+                mcp_config_path=self._mcp_config_path(),
             ),
             job_id=self.job_id,
             agent_id=f"{self.job_id}-plan",
@@ -231,6 +232,16 @@ class Job:
             max_per_job=self.config.limits.max_cost_per_job,
         )
 
+    def _mcp_config_path(self) -> str | None:
+        """Return the MCP config path if configured and the file exists."""
+        from pathlib import Path
+
+        raw = self.config.claude.mcp_config
+        if not raw:
+            return None
+        path = Path(raw).expanduser()
+        return str(path) if path.exists() else None
+
     def _make_on_cost(self, agent: Agent, guard: CostGuard) -> Callable[[float], None]:
         """Return an on_cost callback that updates job total then enforces limits."""
 
@@ -255,7 +266,9 @@ class Job:
 
         guard = self._make_guard()
         agents = []
+        mcp_path = self._mcp_config_path()
         for spec in job_plan.agents:
+            spec.mcp_config_path = mcp_path
             agent = Agent(
                 spec=spec,
                 job_id=self.job_id,
