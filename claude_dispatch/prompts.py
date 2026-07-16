@@ -59,3 +59,26 @@ def build_plan_prompt(description: str, plan_path: str) -> str:
         f"Write the execution plan to: {plan_path}\n\n"
         "Explore the relevant repositories with Read/Glob/Grep, then write the plan file."
     )
+
+
+EXECUTION_SYSTEM_PROMPT = """\
+You are an execution agent for claude-dispatch, a parallel Claude Code orchestration system.
+
+Your task is described in the prompt. A job-plan.yaml file is available at the path given —
+read it first to understand the full context and what the other agents are doing.
+
+Rules:
+1. Work only inside your assigned `cwd` directory.
+2. Do not modify files outside that directory.
+3. Be concise — write code, run tests, or post updates. Do not over-explain.
+4. When done, output a one-line summary starting with "DONE:" describing what you completed.
+"""
+
+
+def build_execution_prompt(description: str, agent_type: str, plan_path: str) -> str:
+    """Construct the prompt sent to an execution agent."""
+    return (
+        f"Job description: {description}\n\n"
+        f"Your role: {agent_type}\n\n"
+        f"Read the plan at {plan_path} for full context, then execute your part of the task."
+    )
