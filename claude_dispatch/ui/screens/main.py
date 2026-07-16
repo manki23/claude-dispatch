@@ -38,6 +38,7 @@ class MainScreen(Screen):
         Binding("m", "message_job", "Message job", show=True),
         Binding("k", "kill_job", "Kill job", show=True),
         Binding("r", "resume_job", "Resume", show=True),
+        Binding("d", "dispatcher", "Dispatcher", show=True),
         Binding("c", "show_costs", "Costs", show=True),
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
@@ -212,6 +213,9 @@ class MainScreen(Screen):
         from claude_dispatch.ui.screens.agents import AgentsScreen
 
         self.app.push_screen(AgentsScreen(job=job))
+
+    def action_dispatcher(self) -> None:
+        self.app.open_dispatcher_conversation()
 
     def action_show_costs(self) -> None:
         from claude_dispatch.ui.modals.cost import CostModal

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -19,6 +21,10 @@ class ConversationScreen(Screen):
     - Input at the bottom; Enter sends a message.
     - Esc pops the screen; reopening reuses the existing thread.
     - Live-updates as the agent replies via ConversationThread.on_reply.
+
+    Optional ``system_prompt_factory``: if provided, called before each send
+    to produce a fresh system prompt (used by the dispatcher agent so it always
+    sees current job state). When None, routing goes through ``job.send_message``.
     """
 
     BINDINGS = [
@@ -26,8 +32,14 @@ class ConversationScreen(Screen):
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
 
-    def __init__(self, job: Job, agent: Agent) -> None:
+    def __init__(
+        self,
+        job: Job,
+        agent: Agent,
+        system_prompt_factory: Callable[[], str] | None = None,
+    ) -> None:
         super().__init__()
+        self._system_prompt_factory = system_prompt_factory
         self._job = job
         self._agent = agent
         self._thread: ConversationThread = agent.get_or_create_conversation()
@@ -80,15 +92,26 @@ class ConversationScreen(Screen):
         user_turn = Turn(role="user", text=message)
         self._append_turn(user_turn)
 
-        # Deliver via Job routing (handles RUNNING queue or DONE resume).
-        delivered = await self._job.send_message(
-            message, agent_type=self._agent.spec.type.value
-        )
-        if not delivered:
-            self.notify(
-                f"Could not deliver message to '{self._agent.spec.type.value}'",
-                severity="warning",
+        if self._system_prompt_factory is not None:
+            # Dispatcher mode: run the agent directly with a fresh system prompt.
+            system_prompt = self._system_prompt_factory()
+            resume_id = self._agent.session_id
+            self.app.run_worker(
+                self._agent.run(
+                    message, resume_session_id=resume_id, system_prompt=system_prompt
+                ),
+                exclusive=False,
             )
+        else:
+            # Normal mode: deliver via Job routing (handles RUNNING queue or DONE resume).
+            delivered = await self._job.send_message(
+                message, agent_type=self._agent.spec.type.value
+            )
+            if not delivered:
+                self.notify(
+                    f"Could not deliver message to '{self._agent.spec.type.value}'",
+                    severity="warning",
+                )
 
     # ── internal helpers ───────────────────────────────────────────
 

@@ -29,6 +29,7 @@ class AgentType(str, Enum):
     TEST = "test"
     SLACK = "slack"
     REVIEW = "review"
+    DISPATCHER = "dispatcher"
 
 
 class AgentStatus(str, Enum):
@@ -79,6 +80,7 @@ AGENT_DEFAULT_TOOLS: dict[AgentType, list[str]] = {
     AgentType.TEST: ["Bash"],
     AgentType.SLACK: [],  # MCP tools only
     AgentType.REVIEW: ["Read", "Glob", "Grep"],
+    AgentType.DISPATCHER: [],  # read-only meta-agent: no tools, context injected via system prompt
 }
 
 # Default model per agent type.
@@ -89,6 +91,7 @@ AGENT_DEFAULT_MODELS: dict[AgentType, str] = {
     AgentType.TEST: "claude-haiku-4-5-20251001",
     AgentType.SLACK: "claude-haiku-4-5-20251001",
     AgentType.REVIEW: "claude-sonnet-4-6",
+    AgentType.DISPATCHER: "claude-sonnet-4-6",
 }
 
 

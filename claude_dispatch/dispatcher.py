@@ -6,6 +6,7 @@ from pathlib import Path
 
 from textual.app import App
 
+from claude_dispatch.agent import Agent, AgentSpec, AgentType
 from claude_dispatch.config import Config, load_config
 from claude_dispatch.job import Job
 
@@ -20,6 +21,33 @@ class DispatcherApp(App):
         super().__init__()
         self.config = config or load_config()
         self.jobs: list[Job] = jobs or []
+        # Singleton dispatcher agent — created once, resumed across opens via session_id.
+        self._dispatcher_agent: Agent = Agent(
+            spec=AgentSpec(type=AgentType.DISPATCHER),
+            job_id="dispatcher",
+            agent_id="dispatcher-0",
+        )
+        self._dispatcher_agent.get_or_create_conversation()
+
+    def open_dispatcher_conversation(self) -> None:
+        """Push ConversationScreen for the dispatcher agent with live context."""
+        from claude_dispatch.dispatcher_context import build_dispatcher_system_prompt
+        from claude_dispatch.ui.screens.conversation import ConversationScreen
+
+        # Dummy Job wrapper so ConversationScreen has a description to show.
+        dummy_job = Job(
+            description="dispatcher",
+            config=self.config,
+            job_id="dispatcher",
+            db_enabled=False,
+        )
+        self.push_screen(
+            ConversationScreen(
+                job=dummy_job,
+                agent=self._dispatcher_agent,
+                system_prompt_factory=lambda: build_dispatcher_system_prompt(self.jobs),
+            )
+        )
 
     async def on_mount(self) -> None:
         from claude_dispatch.db import init_db
