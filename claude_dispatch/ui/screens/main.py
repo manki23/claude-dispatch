@@ -105,13 +105,12 @@ class MainScreen(Screen):
 
     # ── Actions ────────────────────────────────────────────────────
 
-    async def action_new_job(self) -> None:
+    def action_new_job(self) -> None:
         from claude_dispatch.ui.modals.prompt import PromptModal
 
-        description = await self.app.push_screen_wait(
-            PromptModal(label="New job >", placeholder="describe the task…")
-        )
-        if description:
+        def on_dismiss(description: str | None) -> None:
+            if not description:
+                return
             from claude_dispatch.job import Job
 
             job = Job(description=description, config=self.app.config)
@@ -119,21 +118,29 @@ class MainScreen(Screen):
             self._refresh()
             self.app.run_worker(job.run(), exclusive=False)
 
-    async def action_message_job(self) -> None:
+        self.app.push_screen(
+            PromptModal(label="New job >", placeholder="describe the task…"),
+            callback=on_dismiss,
+        )
+
+    def action_message_job(self) -> None:
         job = self._selected_job()
         if not job:
             self.notify("No job selected", severity="warning")
             return
         from claude_dispatch.ui.modals.prompt import PromptModal
 
-        message = await self.app.push_screen_wait(
+        def on_dismiss(message: str | None) -> None:
+            if message:
+                self.app.run_worker(job.send_message(message), exclusive=False)
+
+        self.app.push_screen(
             PromptModal(
                 label=f"→ {job.description[:30]} >",
                 placeholder="message for the job…",
-            )
+            ),
+            callback=on_dismiss,
         )
-        if message:
-            await job.send_message(message)
 
     def action_drill_in(self) -> None:
         job = self._selected_job()
@@ -148,15 +155,20 @@ class MainScreen(Screen):
             job.kill()
             self._refresh()
 
-    async def action_resume_job(self) -> None:
+    def action_resume_job(self) -> None:
         from claude_dispatch.ui.modals.prompt import PromptModal
 
-        job_id = await self.app.push_screen_wait(
-            PromptModal(label="Resume job-id >", placeholder="e.g. abc123")
-        )
-        if not job_id:
-            return
+        def on_dismiss(job_id: str | None) -> None:
+            if job_id:
+                self.app.run_worker(self._do_resume(job_id), exclusive=False)
 
+        self.app.push_screen(
+            PromptModal(label="Resume job-id >", placeholder="e.g. abc123"),
+            callback=on_dismiss,
+        )
+
+    async def _do_resume(self, job_id: str) -> None:
+        """Worker body: reconstruct job from DB and push AgentsScreen."""
         try:
             await self._resume_job(job_id)
         except Exception as exc:

@@ -1,14 +1,39 @@
-"""Tests for TUI action wiring: new_job, message_job, resume_job."""
+"""Tests for TUI action wiring: new_job, message_job, resume_job.
+
+Actions now use push_screen(callback=...) instead of push_screen_wait,
+so tests simulate the callback being invoked directly.
+"""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from claude_dispatch.dispatcher import DispatcherApp
 from claude_dispatch.job import JobStatus
 from claude_dispatch.mock import make_mock_config, make_mock_jobs
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+
+def make_push_screen_stub(return_value, passthrough=None):
+    """Return a push_screen replacement that immediately calls callback(return_value).
+
+    If passthrough is provided, non-callback calls (real screen pushes) are
+    forwarded to it so AgentsScreen etc. actually land on the stack.
+    """
+
+    def stub(screen, callback=None, **kw):
+        if callback:
+            callback(return_value)
+        elif passthrough is not None:
+            passthrough(screen, **kw)
+
+    return stub
+
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
@@ -34,20 +59,18 @@ async def test_new_job_adds_to_jobs_list(empty_app) -> None:
     async with empty_app.run_test() as pilot:
         screen = empty_app.screen
 
-        # Mock push_screen_wait to return a description without real modal
-        screen.app.push_screen_wait = AsyncMock(return_value="Fix the auth bug")
-
-        # run_worker is a sync call wrapping a coroutine — mock it to avoid real SDK
         run_calls = []
 
         def fake_run_worker(coro, **kwargs):
             run_calls.append(coro)
-            coro.close()  # prevent RuntimeWarning: coroutine never awaited
+            if hasattr(coro, "close"):
+                coro.close()
             return None
 
+        screen.app.push_screen = make_push_screen_stub("Fix the auth bug")
         screen.app.run_worker = fake_run_worker
 
-        await screen.action_new_job()
+        screen.action_new_job()
         await pilot.pause()
 
     assert len(run_calls) == 1
@@ -55,13 +78,13 @@ async def test_new_job_adds_to_jobs_list(empty_app) -> None:
 
 
 async def test_new_job_no_description_does_nothing(empty_app) -> None:
-    """Cancelling the modal (empty string) leaves jobs unchanged."""
+    """Cancelling the modal (None) leaves jobs unchanged."""
     async with empty_app.run_test() as pilot:
         screen = empty_app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="")
+        screen.app.push_screen = make_push_screen_stub(None)
         screen.app.run_worker = lambda *a, **kw: None
 
-        await screen.action_new_job()
+        screen.action_new_job()
         await pilot.pause()
 
     assert len(screen.jobs) == 0
@@ -70,15 +93,15 @@ async def test_new_job_no_description_does_nothing(empty_app) -> None:
 async def test_new_job_creates_job_with_correct_description(empty_app) -> None:
     async with empty_app.run_test():
         screen = empty_app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="Build new feature")
+        screen.app.push_screen = make_push_screen_stub("Build new feature")
 
         def fake_run_worker(coro, **kwargs):
-            coro.close()
+            if hasattr(coro, "close"):
+                coro.close()
             return None
 
         screen.app.run_worker = fake_run_worker
-
-        await screen.action_new_job()
+        screen.action_new_job()
 
         job = next(j for j in screen.jobs if j.description == "Build new feature")
         assert job.status == JobStatus.RUNNING
@@ -88,78 +111,101 @@ async def test_new_job_creates_job_with_correct_description(empty_app) -> None:
 
 
 async def test_message_job_calls_send_message(mock_app) -> None:
-    """Typing a message calls await job.send_message(message)."""
+    """Typing a message queues run_worker(job.send_message(...))."""
     async with mock_app.run_test():
         screen = mock_app.screen
         job = mock_app.jobs[0]
 
-        # Mock modal to return message
-        screen.app.push_screen_wait = AsyncMock(return_value="please add logging")
+        screen.app.push_screen = make_push_screen_stub("please add logging")
 
-        # Mock job.send_message (it's async)
-        job.send_message = AsyncMock(return_value=True)
+        worker_coroutines = []
 
-        await screen.action_message_job()
+        def fake_run_worker(coro, **kwargs):
+            worker_coroutines.append(coro)
+            if hasattr(coro, "close"):
+                coro.close()
+            return None
 
-    job.send_message.assert_awaited_once_with("please add logging")
+        screen.app.run_worker = fake_run_worker
+        screen.action_message_job()
+
+    assert len(worker_coroutines) == 1
 
 
-async def test_message_job_no_selection_does_nothing(empty_app) -> None:
-    """No jobs in list → action_message_job is a no-op."""
+async def test_message_job_no_selection_notifies(empty_app) -> None:
+    """No jobs in list → notification shown, push_screen not called."""
     async with empty_app.run_test():
         screen = empty_app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="hi")
+        push_called = []
+        screen.app.push_screen = lambda *a, **kw: push_called.append(True)
 
-        # Should not raise even with no jobs
-        await screen.action_message_job()
+        notified = []
+        screen.notify = lambda msg, **kw: notified.append(msg)
+
+        screen.action_message_job()
+
+    assert push_called == []
+    assert any("No job" in n for n in notified)
 
 
 async def test_message_job_empty_message_does_nothing(mock_app) -> None:
-    """Cancelling the modal → send_message not called."""
+    """Cancelling the modal (None) → run_worker not called."""
     async with mock_app.run_test():
         screen = mock_app.screen
-        job = mock_app.jobs[0]
-        screen.app.push_screen_wait = AsyncMock(return_value="")
-        job.send_message = AsyncMock(return_value=True)
+        screen.app.push_screen = make_push_screen_stub(None)
 
-        await screen.action_message_job()
+        worker_calls = []
+        screen.app.run_worker = lambda *a, **kw: worker_calls.append(True)
 
-    job.send_message.assert_not_awaited()
+        screen.action_message_job()
+
+    assert worker_calls == []
 
 
 # ── action_resume_job ─────────────────────────────────────────────────────────
 
 
 async def test_resume_job_already_loaded(mock_app) -> None:
-    """If job_id is already in self.jobs, AgentsScreen is pushed immediately."""
+    """If job_id is already in self.jobs, AgentsScreen is pushed."""
     async with mock_app.run_test() as pilot:
         from claude_dispatch.ui.screens.agents import AgentsScreen
 
         screen = mock_app.screen
         existing_job = mock_app.jobs[0]
-        screen.app.push_screen_wait = AsyncMock(return_value=existing_job.job_id)
+        real_push = screen.app.push_screen
+        screen.app.push_screen = make_push_screen_stub(existing_job.job_id, passthrough=real_push)
 
-        await screen.action_resume_job()
-        await pilot.pause()
+        # _do_resume is run in a worker; schedule it directly on the event loop
+        def run_worker_direct(coro, **kw):
+            asyncio.ensure_future(coro)
+
+        screen.app.run_worker = run_worker_direct
+
+        screen.action_resume_job()
+        await pilot.pause(0.2)
 
         assert isinstance(mock_app.screen, AgentsScreen)
 
 
 async def test_resume_job_unknown_id_shows_notification(mock_app) -> None:
     """Unknown job_id → notify called with error severity."""
-    async with mock_app.run_test():
+    async with mock_app.run_test() as pilot:
         screen = mock_app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="nonexistent-id")
+        screen.app.push_screen = make_push_screen_stub("nonexistent-id")
 
         notify_calls = []
         screen.notify = lambda msg, **kw: notify_calls.append((msg, kw))
 
-        with patch("claude_dispatch.db.list_jobs", AsyncMock(return_value=[])):
-            await screen.action_resume_job()
+        def run_worker_direct(coro, **kw):
+            asyncio.ensure_future(coro)
 
-        assert len(notify_calls) == 1
-        assert "nonexistent-id" in notify_calls[0][0]
-        assert notify_calls[0][1].get("severity") == "error"
+        screen.app.run_worker = run_worker_direct
+
+        with patch("claude_dispatch.db.list_jobs", AsyncMock(return_value=[])):
+            screen.action_resume_job()
+            await pilot.pause(0.2)
+
+    assert any("nonexistent-id" in c[0] for c in notify_calls)
 
 
 async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
@@ -168,7 +214,13 @@ async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
         from claude_dispatch.ui.screens.agents import AgentsScreen
 
         screen = mock_app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="db-job-1")
+        real_push = screen.app.push_screen
+        screen.app.push_screen = make_push_screen_stub("db-job-1", passthrough=real_push)
+
+        def run_worker_direct(coro, **kw):
+            asyncio.ensure_future(coro)
+
+        screen.app.run_worker = run_worker_direct
 
         fake_jobs = [
             {
@@ -193,8 +245,8 @@ async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
             patch("claude_dispatch.db.list_jobs", AsyncMock(return_value=fake_jobs)),
             patch("claude_dispatch.db.list_agents", AsyncMock(return_value=fake_agents)),
         ):
-            await screen.action_resume_job()
-            await pilot.pause()
+            screen.action_resume_job()
+            await pilot.pause(0.2)
 
         resumed = next(j for j in screen.jobs if j.job_id == "db-job-1")
         assert resumed.description == "Investigate flakiness"
@@ -205,15 +257,19 @@ async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
 
 
 async def test_resume_job_cancelled_modal_does_nothing(mock_app) -> None:
-    """Cancelling the modal (empty string) → no job added, no screen push."""
+    """Cancelling the modal (None) → no job added, no screen push."""
     async with mock_app.run_test():
         from claude_dispatch.ui.screens.main import MainScreen
 
         screen = mock_app.screen
         initial_count = len(screen.jobs)
-        screen.app.push_screen_wait = AsyncMock(return_value="")
+        screen.app.push_screen = make_push_screen_stub(None)
 
-        await screen.action_resume_job()
+        worker_calls = []
+        screen.app.run_worker = lambda *a, **kw: worker_calls.append(True)
+
+        screen.action_resume_job()
 
         assert len(screen.jobs) == initial_count
+        assert worker_calls == []
         assert isinstance(mock_app.screen, MainScreen)

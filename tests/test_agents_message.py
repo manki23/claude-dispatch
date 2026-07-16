@@ -192,6 +192,8 @@ def agents_app():
 
 async def test_message_agent_calls_send_message(agents_app) -> None:
     """m on AgentsScreen calls await job.send_message(message, agent_type=...)."""
+    import asyncio
+
     app, job = agents_app
 
     async with app.run_test() as pilot:
@@ -205,10 +207,19 @@ async def test_message_agent_calls_send_message(agents_app) -> None:
         screen = app.screen
         agent = job.agents[0]
 
-        screen.app.push_screen_wait = AsyncMock(return_value="add more context")
+        screen.app.push_screen = lambda s, callback=None, **kw: callback and callback("add more context")
         job.send_message = AsyncMock(return_value=True)
 
-        await screen.action_message_agent()
+        worker_coros = []
+
+        def fake_run_worker(coro, **kw):
+            worker_coros.append(coro)
+            asyncio.ensure_future(coro)
+
+        screen.app.run_worker = fake_run_worker
+
+        screen.action_message_agent()
+        await pilot.pause(0.2)
 
         job.send_message.assert_awaited_once_with(
             "add more context", agent_type=agent.spec.type.value
@@ -225,16 +236,22 @@ async def test_message_agent_empty_message_no_call(agents_app) -> None:
         await pilot.pause()
 
         screen = app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="")
+        screen.app.push_screen = lambda s, callback=None, **kw: callback and callback(None)
         job.send_message = AsyncMock(return_value=True)
 
-        await screen.action_message_agent()
+        worker_calls = []
+        screen.app.run_worker = lambda *a, **kw: worker_calls.append(True)
+
+        screen.action_message_agent()
 
         job.send_message.assert_not_awaited()
+        assert worker_calls == []
 
 
 async def test_message_agent_delivery_failure_shows_notification(agents_app) -> None:
     """send_message returns False → notify with warning severity."""
+    import asyncio
+
     app, job = agents_app
 
     async with app.run_test() as pilot:
@@ -243,13 +260,19 @@ async def test_message_agent_delivery_failure_shows_notification(agents_app) -> 
         await pilot.pause()
 
         screen = app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="hello")
+        screen.app.push_screen = lambda s, callback=None, **kw: callback and callback("hello")
         job.send_message = AsyncMock(return_value=False)
 
         notify_calls = []
         screen.notify = lambda msg, **kw: notify_calls.append((msg, kw))
 
-        await screen.action_message_agent()
+        def fake_run_worker(coro, **kw):
+            asyncio.ensure_future(coro)
+
+        screen.app.run_worker = fake_run_worker
+
+        screen.action_message_agent()
+        await pilot.pause(0.2)
 
         assert len(notify_calls) == 1
         assert notify_calls[0][1].get("severity") == "warning"
@@ -266,10 +289,12 @@ async def test_message_agent_no_agents_does_nothing(agents_app) -> None:
         await pilot.pause()
 
         screen = app.screen
-        screen.app.push_screen_wait = AsyncMock(return_value="hi")
+        push_calls = []
+        screen.app.push_screen = lambda *a, **kw: push_calls.append(True)
         job.send_message = AsyncMock(return_value=True)
 
-        await screen.action_message_agent()
+        screen.action_message_agent()
+        assert push_calls == []
         job.send_message.assert_not_awaited()
 
 
