@@ -64,6 +64,7 @@ class Job:
     created_at: float = field(default_factory=time.time)
     db_enabled: bool = True  # set False in tests that don't want real DB I/O
     hooks_dir: Path | None = None  # override hooks directory (useful in tests)
+    on_agent_ready: Callable[[Agent], None] | None = field(default=None, repr=False)
     _workdir: Path | None = field(default=None, init=False, repr=False)
 
     @property
@@ -176,6 +177,8 @@ class Job:
             agent_id=f"{self.job_id}-plan",
         )
         plan_agent.on_cost = self._make_on_cost(plan_agent, guard)
+        if self.on_agent_ready:
+            self.on_agent_ready(plan_agent)
         self.agents.append(plan_agent)
 
         resume_id = await self._db_resume_id(plan_agent)
@@ -259,6 +262,8 @@ class Job:
                 agent_id=f"{self.job_id}-{spec.type.value}",
             )
             agent.on_cost = self._make_on_cost(agent, guard)
+            if self.on_agent_ready:
+                self.on_agent_ready(agent)
             agents.append(agent)
         for agent in agents:
             self.agents.append(agent)

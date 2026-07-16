@@ -25,6 +25,7 @@ class AgentsScreen(Screen):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
     ]
 
@@ -85,6 +86,26 @@ class AgentsScreen(Screen):
             from claude_dispatch.ui.screens.logs import LogsScreen
 
             self.app.push_screen(LogsScreen(job=self._job, agent=agent))
+
+    async def action_message_agent(self) -> None:
+        agent = self._selected_agent()
+        if not agent:
+            return
+        from claude_dispatch.ui.modals.prompt import PromptModal
+
+        message = await self.app.push_screen_wait(
+            PromptModal(
+                label=f"→ {agent.spec.type.value} >",
+                placeholder="message for this agent…",
+            )
+        )
+        if message:
+            delivered = await self._job.send_message(message, agent_type=agent.spec.type.value)
+            if not delivered:
+                self.notify(
+                    f"Could not deliver message to '{agent.spec.type.value}'",
+                    severity="warning",
+                )
 
     def action_kill_agent(self) -> None:
         agent = self._selected_agent()
