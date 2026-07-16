@@ -26,6 +26,7 @@ class AgentsScreen(Screen):
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
         Binding("c", "converse", "Converse", show=True),
+        Binding("d", "dispatcher", "Chat", show=True),
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
     ]
@@ -50,6 +51,15 @@ class AgentsScreen(Screen):
         table.add_columns("TYPE", "MODEL", "STATUS", "COST", "LAST ACTION")
         self._refresh_table()
         self.set_interval(1.0, self._refresh_table)
+        self.set_interval(1.0, self._refresh_header)
+
+    def _refresh_header(self) -> None:
+        """Keep header phase/cost in sync with the live job."""
+        self.query_one("#agents-header", Label).update(
+            f"[dim]Jobs[/dim] › [bold]{self._job.description}[/bold]  "
+            f"[dim]phase:[/dim] {self._job.phase.value}  "
+            f"[dim]cost:[/dim] ${self._job.cost_usd:.4f}"
+        )
 
     def _refresh_table(self) -> None:
         table = self.query_one("#agents-table", DataTable)
@@ -120,6 +130,9 @@ class AgentsScreen(Screen):
         if agent and agent.status == AgentStatus.RUNNING:
             agent.status = AgentStatus.KILLED
             self._refresh_table()
+
+    def action_dispatcher(self) -> None:
+        self.app.open_dispatcher_conversation()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

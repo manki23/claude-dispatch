@@ -32,6 +32,11 @@ class ConversationScreen(Screen):
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
 
+    def action_dispatcher(self) -> None:
+        """Open dispatcher from any conversation (unless already in dispatcher)."""
+        if self._agent.spec.type.value != "dispatcher":
+            self.app.open_dispatcher_conversation()
+
     def __init__(
         self,
         job: Job,

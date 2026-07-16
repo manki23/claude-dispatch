@@ -19,6 +19,7 @@ class LogsScreen(Screen):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("d", "dispatcher", "Chat", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
 
@@ -65,6 +66,8 @@ class LogsScreen(Screen):
 
         # Poll fallback: catch any lines that slipped in before callback was attached
         self.set_interval(0.5, self._poll_new_lines)
+        # Refresh header so status/cost stay current
+        self.set_interval(1.0, self._refresh_header)
 
     def on_unmount(self) -> None:
         # Restore the original on_log so other observers (CLI, etc.) still work
@@ -80,6 +83,15 @@ class LogsScreen(Screen):
         if at_bottom:
             log.scroll_end(animate=False)
 
+    def _refresh_header(self) -> None:
+        """Keep header status/cost in sync with the live agent."""
+        self.query_one("#log-header", Label).update(
+            f"[bold]{self._job.description}[/bold] › [cyan]{self._agent.spec.type.value}[/cyan]  "
+            f"[dim]model:[/dim] {self._agent.model}  "
+            f"[dim]status:[/dim] {_status_markup(self._agent.status.value)}  "
+            f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}"
+        )
+
     def _poll_new_lines(self) -> None:
         """Append any log_lines that arrived before the live callback was wired."""
         new_lines = self._agent.log_lines[self._rendered_count :]
@@ -88,6 +100,9 @@ class LogsScreen(Screen):
         self._rendered_count += len(new_lines)
 
     # ── actions ───────────────────────────────────────────────────
+
+    def action_dispatcher(self) -> None:
+        self.app.open_dispatcher_conversation()
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

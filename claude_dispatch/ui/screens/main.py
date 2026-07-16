@@ -38,7 +38,7 @@ class MainScreen(Screen):
         Binding("m", "message_job", "Message job", show=True),
         Binding("k", "kill_job", "Kill job", show=True),
         Binding("r", "resume_job", "Resume", show=True),
-        Binding("d", "dispatcher", "Dispatcher", show=True),
+        Binding("d", "dispatcher", "Chat", show=True),
         Binding("c", "show_costs", "Costs", show=True),
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
@@ -122,6 +122,7 @@ class MainScreen(Screen):
     async def action_message_job(self) -> None:
         job = self._selected_job()
         if not job:
+            self.notify("No job selected", severity="warning")
             return
         from claude_dispatch.ui.modals.prompt import PromptModal
 
@@ -156,7 +157,14 @@ class MainScreen(Screen):
         if not job_id:
             return
 
-        # Check if job is already loaded
+        try:
+            await self._resume_job(job_id)
+        except Exception as exc:
+            self.notify(f"Resume failed: {exc}", severity="error")
+
+    async def _resume_job(self, job_id: str) -> None:
+        """Reconstruct a job from memory or DB and push AgentsScreen."""
+        # Check if job is already loaded in this session
         existing = next((j for j in self.jobs if j.job_id == job_id), None)
         if existing:
             from claude_dispatch.ui.screens.agents import AgentsScreen
@@ -176,12 +184,13 @@ class MainScreen(Screen):
         from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
         from claude_dispatch.job import Job, JobStatus
 
-        raw_status = row["status"]
-        job_status = (
-            JobStatus(raw_status) if raw_status in JobStatus._value2member_map_ else JobStatus.DONE
-        )
+        try:
+            job_status = JobStatus(row["status"])
+        except (ValueError, TypeError):
+            job_status = JobStatus.DONE
+
         job = Job(
-            description=row["description"],
+            description=row["description"] or "",
             config=self.app.config,
             job_id=job_id,
             status=job_status,
@@ -192,12 +201,14 @@ class MainScreen(Screen):
                 agent_type = AgentType(ar["agent_type"])
             except ValueError:
                 continue
-            raw_agent_status = ar["status"]
-            agent_status = (
-                AgentStatus(raw_agent_status)
-                if raw_agent_status in AgentStatus._value2member_map_
-                else AgentStatus.DONE
-            )
+            try:
+                agent_status = AgentStatus(ar["status"])
+            except (ValueError, TypeError):
+                agent_status = AgentStatus.DONE
+            # Jobs loaded from DB are never still running — the process is dead.
+            # Force RUNNING → DONE so the agent is resumable via send_message.
+            if agent_status == AgentStatus.RUNNING:
+                agent_status = AgentStatus.DONE
             agent = Agent(
                 spec=AgentSpec(type=agent_type),
                 job_id=job_id,

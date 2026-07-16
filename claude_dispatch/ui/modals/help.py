@@ -12,12 +12,14 @@ _BINDINGS: list[tuple[str, str, str]] = [
     ("Global", "q", "Quit"),
     ("Global", "?", "Show this help"),
     ("Global", "c", "Cost breakdown"),
+    ("Global", "d", "Dispatcher chat"),
     ("Jobs view", "n", "New job (opens prompt)"),
     ("Jobs view", "Enter", "Drill into selected job"),
     ("Jobs view", "m", "Message selected job"),
     ("Jobs view", "k", "Kill selected job"),
     ("Jobs view", "r", "Resume job from history"),
     ("Agents view", "Enter", "View agent logs"),
+    ("Agents view", "c", "Converse with agent"),
     ("Agents view", "k", "Kill selected agent"),
     ("Agents view", "Esc", "Back to Jobs"),
     ("Logs view", "Esc", "Back to Agents"),
@@ -33,9 +35,11 @@ class HelpModal(ModalScreen[None]):
         align: center middle;
     }
     #help-dialog {
-        width: 65;
+        width: 80%;
+        max-width: 80;
+        min-width: 50;
         height: auto;
-        max-height: 35;
+        max-height: 80%;
         background: $surface;
         border: solid $primary;
         padding: 1 2;
