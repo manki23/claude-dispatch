@@ -13,6 +13,16 @@ from pathlib import Path
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
 from claude_dispatch.db import get_session, upsert_session
+from claude_dispatch.hooks import (
+    POST_AGENT_DONE,
+    POST_JOB_DONE,
+    POST_JOB_FAILED,
+    PRE_JOB_START,
+    fire,
+    post_agent_done_payload,
+    post_job_done_payload,
+    pre_job_start_payload,
+)
 from claude_dispatch.prompts import (
     EXECUTION_SYSTEM_PROMPT,
     PLAN_SYSTEM_PROMPT,
@@ -51,6 +61,7 @@ class Job:
     cost_usd: float = 0.0
     created_at: float = field(default_factory=time.time)
     db_enabled: bool = True  # set False in tests that don't want real DB I/O
+    hooks_dir: Path | None = None  # override hooks directory (useful in tests)
     _workdir: Path | None = field(default=None, init=False, repr=False)
 
     @property
@@ -100,10 +111,15 @@ class Job:
             logger.exception("db get_session failed for agent %s", agent.agent_id)
             return None
 
+    async def _fire(self, hook_name: str, payload: dict) -> None:
+        """Fire a lifecycle hook; never raises."""
+        await fire(hook_name, payload, hooks_dir=self.hooks_dir)
+
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
         """Main job lifecycle: plan → execute → done."""
+        await self._fire(PRE_JOB_START, pre_job_start_payload(self.job_id, self.description))
         try:
             await self._run_plan_phase()
             await self._run_execute_phase()
@@ -111,7 +127,38 @@ class Job:
             self.status = JobStatus.DONE
         except Exception:
             self.status = JobStatus.FAILED
+            await self._fire(
+                POST_JOB_FAILED,
+                post_job_done_payload(
+                    job_id=self.job_id,
+                    description=self.description,
+                    status="failed",
+                    total_cost_usd=self.cost_usd,
+                    agents=self._agent_summaries(),
+                ),
+            )
             raise
+        await self._fire(
+            POST_JOB_DONE,
+            post_job_done_payload(
+                job_id=self.job_id,
+                description=self.description,
+                status="done",
+                total_cost_usd=self.cost_usd,
+                agents=self._agent_summaries(),
+            ),
+        )
+
+    def _agent_summaries(self) -> list[dict]:
+        return [
+            {
+                "type": a.spec.type.value,
+                "status": a.status.value,
+                "cost_usd": a.cost_usd,
+                "session_id": a.session_id,
+            }
+            for a in self.agents
+        ]
 
     async def _run_plan_phase(self) -> None:
         """Spawn the plan agent (Sonnet) and wait for job-plan.yaml."""
@@ -151,6 +198,17 @@ class Job:
             raise RuntimeError(f"Plan phase timed out after {timeout}s (job {self.job_id})")
 
         await self._db_upsert(plan_agent)
+        await self._fire(
+            POST_AGENT_DONE,
+            post_agent_done_payload(
+                job_id=self.job_id,
+                agent_type=plan_agent.spec.type.value,
+                status=plan_agent.status.value,
+                session_id=plan_agent.session_id,
+                cost_usd=plan_agent.cost_usd,
+                description=self.description,
+            ),
+        )
 
         if not self.plan_path.exists():
             plan_agent.status = AgentStatus.FAILED
@@ -244,8 +302,19 @@ class Job:
                     logger.exception("agent %s failed", agent.agent_id)
                     exc = e
                 finally:
-                    # Persist session regardless of outcome, then unblock dependants
+                    # Persist session regardless of outcome, then notify and unblock
                     await self._db_upsert(agent)
+                    await self._fire(
+                        POST_AGENT_DONE,
+                        post_agent_done_payload(
+                            job_id=self.job_id,
+                            agent_type=agent.spec.type.value,
+                            status=agent.status.value,
+                            session_id=agent.session_id,
+                            cost_usd=agent.cost_usd,
+                            description=self.description,
+                        ),
+                    )
                     done_events[agent.spec.type.value].set()
             if exc is not None:
                 raise exc

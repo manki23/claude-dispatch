@@ -20,7 +20,7 @@ async def test_app_starts(mock_app):
     async with mock_app.run_test():
         from textual.widgets import DataTable
         table = mock_app.screen.query_one("#jobs-table", DataTable)
-        assert table.row_count == 3
+        assert table.row_count == len(make_mock_jobs())
 
 
 async def test_jobs_table_has_expected_columns(mock_app):
