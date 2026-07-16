@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import time
-
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Label
-from textual.containers import Vertical
 
 from claude_dispatch.agent import Agent, AgentStatus
 from claude_dispatch.job import Job
-
 
 _STATUS_ICONS: dict[str, str] = {
     AgentStatus.RUNNING: "[green]● running[/green]",

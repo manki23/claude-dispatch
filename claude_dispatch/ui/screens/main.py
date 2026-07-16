@@ -6,12 +6,11 @@ import time
 
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Label
-from textual.containers import Vertical
 
-from claude_dispatch.job import Job, JobPhase, JobStatus
-
+from claude_dispatch.job import Job, JobStatus
 
 _STATUS_ICONS: dict[str, str] = {
     JobStatus.RUNNING: "[green]●[/green]",

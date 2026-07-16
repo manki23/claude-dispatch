@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
-from claude_dispatch.job import Job, JobPhase, JobStatus
 from claude_dispatch.config import Config
+from claude_dispatch.job import Job, JobPhase, JobStatus
 
 
 def make_mock_config() -> Config:

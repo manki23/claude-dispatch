@@ -75,7 +75,7 @@ class CostModal(ModalScreen[None]):
                     f"${agent.cost_usd:.4f}",
                 )
             job_total = sum(a.cost_usd for a in job.agents)
-            table.add_row("", "", "", f"[dim]job total[/dim]", f"[bold]${job_total:.4f}[/bold]")
+            table.add_row("", "", "", "[dim]job total[/dim]", f"[bold]${job_total:.4f}[/bold]")
 
     def action_dismiss_modal(self) -> None:
         self.dismiss()

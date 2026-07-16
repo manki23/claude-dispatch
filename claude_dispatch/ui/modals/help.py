@@ -5,8 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
-from textual.widgets import Label, Static, DataTable
-
+from textual.widgets import DataTable, Label, Static
 
 _BINDINGS: list[tuple[str, str, str]] = [
     # (context, key, description)

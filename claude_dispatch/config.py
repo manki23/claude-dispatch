@@ -9,7 +9,6 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
-
 CONFIG_DIR = Path(os.environ.get("CLAUDE_DISPATCH_CONFIG_DIR", "~/.claude-dispatch")).expanduser()
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 HOOKS_DIR = CONFIG_DIR / "hooks"

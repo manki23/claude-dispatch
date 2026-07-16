@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.screen import Screen
-from textual.widgets import Footer, Label, RichLog, Static
 from textual.containers import Vertical
+from textual.screen import Screen
+from textual.widgets import Footer, Label, RichLog
 
 from claude_dispatch.agent import Agent
 from claude_dispatch.job import Job
