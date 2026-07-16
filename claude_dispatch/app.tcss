@@ -100,8 +100,11 @@ CostModal {
 }
 
 #cost-dialog {
-    width: 60;
+    width: 90%;
+    max-width: 120;
+    min-width: 55;
     height: auto;
+    max-height: 80%;
     background: $surface;
     border: solid $primary;
     padding: 1 2;
@@ -112,8 +115,11 @@ HelpModal {
 }
 
 #help-dialog {
-    width: 60;
+    width: 80%;
+    max-width: 80;
+    min-width: 50;
     height: auto;
+    max-height: 80%;
     background: $surface;
     border: solid $primary;
     padding: 1 2;

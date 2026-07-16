@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import App
+from textual.worker import Worker, WorkerState
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentType
 from claude_dispatch.config import Config, load_config
@@ -48,6 +49,17 @@ class DispatcherApp(App):
                 system_prompt_factory=lambda: build_dispatcher_system_prompt(self.jobs),
             )
         )
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Catch any worker (job) failure and surface it as a notification.
+
+        Without this, an unhandled exception in a background worker crashes
+        the entire TUI.
+        """
+        if event.state == WorkerState.ERROR:
+            exc = event.worker.error
+            msg = f"{type(exc).__name__}: {exc}" if exc else "unknown error"
+            self.notify(msg, severity="error", title="Job failed")
 
     async def on_mount(self) -> None:
         from claude_dispatch.db import init_db

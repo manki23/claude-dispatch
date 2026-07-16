@@ -16,9 +16,11 @@ class CostModal(ModalScreen[None]):
         align: center middle;
     }
     #cost-dialog {
-        width: 70;
+        width: 90%;
+        max-width: 120;
+        min-width: 55;
         height: auto;
-        max-height: 30;
+        max-height: 80%;
         background: $surface;
         border: solid $primary;
         padding: 1 2;
