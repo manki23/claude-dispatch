@@ -1,0 +1,132 @@
+/* claude-dispatch — Textual stylesheet */
+
+/* ── Global ──────────────────────────────────────────────────────── */
+Screen {
+    background: $surface;
+    layers: base overlay;
+}
+
+/* ── Header bar ──────────────────────────────────────────────────── */
+#header-bar {
+    height: 1;
+    background: $primary;
+    color: $text;
+    padding: 0 1;
+    dock: top;
+    layout: horizontal;
+}
+
+#header-title {
+    width: 1fr;
+    color: $text;
+    text-style: bold;
+}
+
+#header-stats {
+    color: $text-muted;
+    text-align: right;
+}
+
+/* ── Breadcrumb ──────────────────────────────────────────────────── */
+#breadcrumb {
+    height: 1;
+    background: $primary-darken-2;
+    color: $text-muted;
+    padding: 0 1;
+    dock: top;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────── */
+DataTable {
+    height: 1fr;
+    background: $surface;
+}
+
+DataTable > .datatable--header {
+    background: $primary-darken-3;
+    color: $text;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary;
+    color: $text;
+}
+
+/* ── Log view ────────────────────────────────────────────────────── */
+#log-container {
+    height: 1fr;
+    border: solid $primary-darken-2;
+    padding: 0 1;
+}
+
+RichLog {
+    background: $surface;
+    scrollbar-gutter: stable;
+}
+
+/* ── Modals ──────────────────────────────────────────────────────── */
+PromptModal {
+    align: center bottom;
+    background: transparent;
+}
+
+#prompt-container {
+    height: 3;
+    background: $primary-darken-3;
+    border-top: solid $primary;
+    padding: 0 1;
+    width: 100%;
+    layout: horizontal;
+}
+
+#prompt-label {
+    width: auto;
+    color: $accent;
+    text-style: bold;
+    margin-right: 1;
+    content-align: left middle;
+}
+
+#prompt-input {
+    width: 1fr;
+    border: none;
+    background: transparent;
+    color: $text;
+}
+
+CostModal {
+    align: center middle;
+}
+
+#cost-dialog {
+    width: 60;
+    height: auto;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+}
+
+HelpModal {
+    align: center middle;
+}
+
+#help-dialog {
+    width: 60;
+    height: auto;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+}
+
+#modal-title {
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#modal-close-hint {
+    color: $text-muted;
+    margin-top: 1;
+    text-align: center;
+}

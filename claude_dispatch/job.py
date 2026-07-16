@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -34,10 +35,11 @@ class Job:
     description: str
     config: Config
     job_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    phase: JobPhase = JobPhase.PLAN
-    status: JobStatus = JobStatus.RUNNING
+    phase: JobPhase = field(default=JobPhase.PLAN)
+    status: JobStatus = field(default=JobStatus.RUNNING)
     agents: list[Agent] = field(default_factory=list)
     cost_usd: float = 0.0
+    created_at: float = field(default_factory=time.time)
     _workdir: Path | None = field(default=None, init=False, repr=False)
 
     @property
@@ -65,7 +67,7 @@ class Job:
             await self._run_execute_phase()
             self.phase = JobPhase.DONE
             self.status = JobStatus.DONE
-        except Exception as e:
+        except Exception:
             self.status = JobStatus.FAILED
             raise
 
@@ -73,34 +75,28 @@ class Job:
         """Spawn the plan agent (Sonnet) and wait for job-plan.yaml."""
         self.phase = JobPhase.PLAN
         plan_agent = Agent(
-            spec=AgentSpec(
-                type=AgentType.PLAN,
-                cwd=str(self.workdir),
-            ),
+            spec=AgentSpec(type=AgentType.PLAN, cwd=str(self.workdir)),
             job_id=self.job_id,
             agent_id=f"{self.job_id}-plan",
         )
         self.agents.append(plan_agent)
         # TODO: run via Claude Agent SDK, wait for plan_path to appear
         plan_agent.status = AgentStatus.RUNNING
-        await asyncio.sleep(0)  # yield control
+        await asyncio.sleep(0)
 
     async def _run_execute_phase(self) -> None:
         """Parse plan, create worktrees, spawn execution agents respecting deps."""
         self.phase = JobPhase.EXECUTE
         if not self.plan_path.exists():
-            return  # plan agent didn't produce output yet
+            return
 
         from claude_dispatch.plan import parse_plan
 
         job_plan = parse_plan(self.plan_path)
-
-        # Create worktrees declared in the plan
         for wt in job_plan.worktrees:
             await self._create_worktree(wt.repo, wt.path, wt.branch)
 
-        # Spawn agents respecting depends_on ordering
-        # TODO: implement dependency-aware scheduling
+        # TODO: implement dependency-aware scheduling (issue #3)
         for spec in job_plan.agents:
             agent = Agent(
                 spec=spec,
@@ -114,7 +110,6 @@ class Job:
         repo_path = self.config.repos.get(repo)
         if not repo_path:
             raise ValueError(f"Repo '{repo}' not found in config.repos")
-
         proc = await asyncio.create_subprocess_exec(
             "git", "worktree", "add", "-b", branch, path,
             cwd=str(Path(repo_path).expanduser()),
@@ -131,6 +126,6 @@ class Job:
         self.status = JobStatus.KILLED
 
     def send_message(self, message: str) -> None:
-        """Inject a user message into the job's active plan or coordination loop."""
-        # TODO: route message to the appropriate agent via SDK stdin injection
+        """Inject a user message into the job's coordination loop."""
+        # TODO: route to active agent via SDK stdin injection (issue #1)
         pass
