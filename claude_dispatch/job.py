@@ -12,7 +12,12 @@ from pathlib import Path
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
-from claude_dispatch.prompts import PLAN_SYSTEM_PROMPT, build_plan_prompt
+from claude_dispatch.prompts import (
+    EXECUTION_SYSTEM_PROMPT,
+    PLAN_SYSTEM_PROMPT,
+    build_execution_prompt,
+    build_plan_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +134,81 @@ class Job:
         for wt in job_plan.worktrees:
             await self._create_worktree(wt.repo, wt.path, wt.branch)
 
-        # TODO: implement dependency-aware scheduling (issue #3)
-        for spec in job_plan.agents:
-            agent = Agent(
+        agents = [
+            Agent(
                 spec=spec,
                 job_id=self.job_id,
                 agent_id=f"{self.job_id}-{spec.type.value}",
+                on_cost=self._on_agent_cost,
             )
+            for spec in job_plan.agents
+        ]
+        for agent in agents:
             self.agents.append(agent)
+
+        if agents:
+            await self._schedule_agents(agents)
+
+    async def _schedule_agents(self, agents: list[Agent]) -> None:
+        """Run agents concurrently, honouring depends_on ordering."""
+        by_type: dict[str, Agent] = {a.spec.type.value: a for a in agents}
+
+        # Validate all declared deps exist in the plan
+        for agent in agents:
+            for dep in agent.spec.depends_on:
+                if dep not in by_type:
+                    raise ValueError(
+                        f"Agent '{agent.spec.type.value}' depends on unknown type '{dep}'"
+                    )
+
+        # Detect cycles via DFS (WHITE=0, GRAY=1, BLACK=2)
+        color: dict[str, int] = {t: 0 for t in by_type}
+
+        def _dfs(node: str) -> None:
+            color[node] = 1
+            for dep in by_type[node].spec.depends_on:
+                if color.get(dep, 0) == 1:
+                    raise ValueError(f"Cycle in agent dependencies detected at '{dep}'")
+                if color.get(dep, 0) == 0:
+                    _dfs(dep)
+            color[node] = 2
+
+        for t in by_type:
+            if color[t] == 0:
+                _dfs(t)
+
+        # One event per agent type — set when the agent finishes (success or fail)
+        done_events: dict[str, asyncio.Event] = {t: asyncio.Event() for t in by_type}
+        sem = asyncio.Semaphore(self.config.defaults.max_parallel_agents)
+
+        async def run_agent(agent: Agent) -> None:
+            # Wait for every dependency to finish before acquiring the semaphore
+            for dep_type in agent.spec.depends_on:
+                await done_events[dep_type].wait()
+
+            prompt = build_execution_prompt(
+                description=self.description,
+                agent_type=agent.spec.type.value,
+                plan_path=str(self.plan_path),
+            )
+            exc: Exception | None = None
+            async with sem:
+                try:
+                    await agent.run(prompt, system_prompt=EXECUTION_SYSTEM_PROMPT)
+                except Exception as e:
+                    logger.exception("agent %s failed", agent.agent_id)
+                    exc = e
+                finally:
+                    # Always unblock dependants so they don't hang on a failed dep
+                    done_events[agent.spec.type.value].set()
+            if exc is not None:
+                raise exc
+
+        results = await asyncio.gather(*[run_agent(a) for a in agents], return_exceptions=True)
+
+        failed = [agents[i].agent_id for i, r in enumerate(results) if isinstance(r, BaseException)]
+        if failed:
+            raise RuntimeError(f"Execute phase: agents failed: {', '.join(failed)}")
 
     async def _create_worktree(self, repo: str, path: str, branch: str) -> None:
         """Create a git worktree for the given repo."""
