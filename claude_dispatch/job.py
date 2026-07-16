@@ -384,10 +384,10 @@ class Job:
         await proc.wait()
 
     def kill(self) -> None:
-        """Kill all running agents and mark job as killed."""
+        """Cancel all running agents and mark job as killed."""
         for agent in self.agents:
             if agent.status == AgentStatus.RUNNING:
-                agent.status = AgentStatus.KILLED
+                agent.cancel()
         self.status = JobStatus.KILLED
 
     def _find_message_target(self, agent_type: str | None = None) -> Agent | None:
