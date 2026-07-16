@@ -28,7 +28,6 @@ class AgentsScreen(Screen):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
-        Binding("enter", "view_logs", "View logs", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
     ]
 
@@ -44,7 +43,7 @@ class AgentsScreen(Screen):
                 f"[dim]cost:[/dim] ${self._job.cost_usd:.4f}",
                 id="agents-header",
             )
-            yield DataTable(id="agents-table")
+            yield DataTable(id="agents-table", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -78,6 +77,10 @@ class AgentsScreen(Screen):
         if row < len(self._job.agents):
             return self._job.agents[row]
         return None
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """DataTable fires RowSelected on Enter — drill into agent logs."""
+        self.action_view_logs()
 
     def action_view_logs(self) -> None:
         agent = self._selected_agent()

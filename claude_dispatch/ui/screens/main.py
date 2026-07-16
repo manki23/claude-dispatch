@@ -36,7 +36,6 @@ class MainScreen(Screen):
 
     BINDINGS = [
         Binding("n", "new_job", "New job", show=True),
-        Binding("enter", "drill_in", "Drill in", show=True),
         Binding("m", "message_job", "Message job", show=True),
         Binding("k", "kill_job", "Kill job", show=True),
         Binding("r", "resume_job", "Resume", show=True),
@@ -52,7 +51,7 @@ class MainScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Label("", id="main-stats")
-            yield DataTable(id="jobs-table")
+            yield DataTable(id="jobs-table", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -100,6 +99,12 @@ class MainScreen(Screen):
         if row < len(self.jobs):
             return self.jobs[row]
         return None
+
+    # ── DataTable events ───────────────────────────────────────────
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """DataTable fires RowSelected on Enter — drill into the selected job."""
+        self.action_drill_in()
 
     # ── Actions ────────────────────────────────────────────────────
 
