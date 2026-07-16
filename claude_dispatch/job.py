@@ -372,7 +372,45 @@ class Job:
                 agent.status = AgentStatus.KILLED
         self.status = JobStatus.KILLED
 
-    def send_message(self, message: str) -> None:
-        """Inject a user message into the job's coordination loop."""
-        # TODO: route to active agent via SDK stdin injection (issue #1)
-        pass
+    def _find_message_target(self, agent_type: str | None = None) -> Agent | None:
+        """Return the best agent to receive an injected message.
+
+        Priority:
+        1. If *agent_type* is given, return that agent (or None if not found).
+        2. Any RUNNING agent (first one found).
+        3. Last DONE agent with a session_id (enables resume into a finished agent).
+        """
+        if agent_type is not None:
+            return next((a for a in self.agents if a.spec.type.value == agent_type), None)
+        running = next((a for a in self.agents if a.status == AgentStatus.RUNNING), None)
+        if running:
+            return running
+        done_with_session = [
+            a for a in self.agents if a.status == AgentStatus.DONE and a.session_id
+        ]
+        return done_with_session[-1] if done_with_session else None
+
+    async def send_message(self, message: str, agent_type: str | None = None) -> bool:
+        """Inject a user message into the job's coordination loop.
+
+        If a matching agent is RUNNING, the message is queued in its inbox and
+        delivered at the next SDK turn boundary.  If the agent is DONE (but has a
+        session_id), a new SDK turn is started via ``agent.run()`` so the
+        conversation is resumed.
+
+        Returns True if a target was found and the message was delivered/queued.
+        """
+        target = self._find_message_target(agent_type)
+        if target is None:
+            logger.warning("send_message: no eligible agent in job %s", self.job_id)
+            return False
+
+        if target.status == AgentStatus.RUNNING:
+            # Inbox — picked up at the next turn boundary inside Agent.run()
+            target.send_message(message)
+        else:
+            # Resume a finished agent in a background task
+            guard = self._make_guard()
+            target.on_cost = self._make_on_cost(target, guard)
+            asyncio.create_task(target.run(message, resume_session_id=target.session_id))
+        return True

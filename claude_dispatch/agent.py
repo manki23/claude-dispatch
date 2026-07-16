@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -89,6 +90,10 @@ class Agent:
     on_cost: Callable[[float], None] | None = field(default=None, repr=False)
     on_status: Callable[[AgentStatus], None] | None = field(default=None, repr=False)
 
+    # Inbox for messages injected while the agent is running or after it finishes.
+    # Messages are picked up at turn boundaries (between SDK query() calls).
+    _inbox: asyncio.Queue[str] = field(default_factory=asyncio.Queue, init=False, repr=False)
+
     @property
     def model(self) -> str:
         return self.spec.model or AGENT_DEFAULT_MODELS[self.spec.type]
@@ -108,17 +113,57 @@ class Agent:
         if self.on_log:
             self.on_log(line)
 
+    def send_message(self, text: str) -> None:
+        """Queue a user message to be delivered at the next turn boundary.
+
+        If the agent is RUNNING, the message is picked up after the current
+        SDK turn completes. If the agent is DONE, call :meth:`run` with
+        ``resume_session_id`` to start a new turn.
+        """
+        self._inbox.put_nowait(text)
+        self._append_log(f"[user] {text}")
+
     async def run(
         self,
         prompt: str,
         resume_session_id: str | None = None,
         system_prompt: str | None = None,
     ) -> str | None:
-        """Run the agent with the given prompt via the Claude Code SDK.
+        """Run the agent, looping over SDK turns until the inbox is drained.
 
-        Returns the session_id on success (useful for resume), or None on failure.
+        Each iteration calls ``query()`` once. After a turn completes, any
+        messages waiting in ``_inbox`` are consumed as the prompt for the next
+        turn (with ``resume=session_id`` so context is preserved).
+
+        Returns the session_id of the last completed turn (useful for DB
+        persistence and future resume calls), or None on failure.
         """
         self._set_status(AgentStatus.RUNNING)
+        current_prompt = prompt
+        current_resume = resume_session_id
+
+        while True:
+            await self._run_turn(current_prompt, current_resume, system_prompt)
+
+            # Propagate session_id for the next resume
+            current_resume = self.session_id
+
+            # Drain one message from the inbox — if present, loop again
+            try:
+                current_prompt = self._inbox.get_nowait()
+                self._append_log("[resuming with queued message]")
+            except asyncio.QueueEmpty:
+                break
+
+        return self.session_id
+
+    async def _run_turn(
+        self,
+        prompt: str,
+        resume_session_id: str | None,
+        system_prompt: str | None,
+    ) -> None:
+        """Execute a single SDK query() turn and process its message stream."""
 
         async def _track_cost(
             input_data: dict[str, Any],
@@ -163,7 +208,7 @@ class Agent:
                     final_status = AgentStatus.FAILED if message.is_error else AgentStatus.DONE
                     self._set_status(final_status)
                     logger.info(
-                        "agent %s finished: status=%s cost=%.4f session=%s",
+                        "agent %s turn finished: status=%s cost=%.4f session=%s",
                         self.agent_id,
                         final_status,
                         self.cost_usd,
@@ -174,5 +219,3 @@ class Agent:
             self._set_status(AgentStatus.FAILED)
             logger.exception("agent %s raised: %s", self.agent_id, exc)
             raise
-
-        return self.session_id
