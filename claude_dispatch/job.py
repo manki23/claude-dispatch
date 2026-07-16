@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,9 @@ from pathlib import Path
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
+from claude_dispatch.prompts import PLAN_SYSTEM_PROMPT, build_plan_prompt
+
+logger = logging.getLogger(__name__)
 
 
 class JobPhase(str, Enum):
@@ -75,14 +79,43 @@ class Job:
         """Spawn the plan agent (Sonnet) and wait for job-plan.yaml."""
         self.phase = JobPhase.PLAN
         plan_agent = Agent(
-            spec=AgentSpec(type=AgentType.PLAN, cwd=str(self.workdir)),
+            spec=AgentSpec(
+                type=AgentType.PLAN,
+                model=self.config.defaults.plan_model,
+                cwd=str(self.workdir),
+            ),
             job_id=self.job_id,
             agent_id=f"{self.job_id}-plan",
+            on_cost=self._on_agent_cost,
         )
         self.agents.append(plan_agent)
-        # TODO: run via Claude Agent SDK, wait for plan_path to appear
-        plan_agent.status = AgentStatus.RUNNING
-        await asyncio.sleep(0)
+
+        prompt = build_plan_prompt(
+            description=self.description,
+            plan_path=str(self.plan_path),
+        )
+
+        timeout = self.config.defaults.plan_timeout_s
+        logger.info("job %s: starting plan phase (timeout=%ds)", self.job_id, timeout)
+
+        try:
+            await asyncio.wait_for(
+                plan_agent.run(prompt, system_prompt=PLAN_SYSTEM_PROMPT),
+                timeout=timeout,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            plan_agent.status = AgentStatus.FAILED
+            raise RuntimeError(f"Plan phase timed out after {timeout}s (job {self.job_id})")
+
+        if not self.plan_path.exists():
+            plan_agent.status = AgentStatus.FAILED
+            raise RuntimeError(f"Plan agent finished but {self.plan_path} was not written")
+
+        logger.info("job %s: plan phase complete (%s)", self.job_id, self.plan_path)
+
+    def _on_agent_cost(self, cost: float) -> None:
+        """Accumulate per-agent cost into the job total."""
+        self.cost_usd = sum(a.cost_usd for a in self.agents)
 
     async def _run_execute_phase(self) -> None:
         """Parse plan, create worktrees, spawn execution agents respecting deps."""
@@ -111,7 +144,12 @@ class Job:
         if not repo_path:
             raise ValueError(f"Repo '{repo}' not found in config.repos")
         proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "add", "-b", branch, path,
+            "git",
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            path,
             cwd=str(Path(repo_path).expanduser()),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

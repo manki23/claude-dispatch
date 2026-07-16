@@ -26,6 +26,7 @@ class Defaults(BaseModel):
     execute_model: str = "claude-haiku-4-5-20251001"
     username: str = ""
     max_parallel_agents: int = 5
+    plan_timeout_s: int = 300  # seconds before plan phase is aborted
 
 
 class ClaudeConfig(BaseModel):

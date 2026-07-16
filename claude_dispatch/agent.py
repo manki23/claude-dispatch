@@ -41,7 +41,7 @@ class AgentStatus(str, Enum):
 # Default allowed tools per agent type.
 # Agents are locked to this list — they cannot use tools outside it.
 AGENT_DEFAULT_TOOLS: dict[AgentType, list[str]] = {
-    AgentType.PLAN: ["Read", "Glob", "Grep", "WebSearch", "WebFetch"],
+    AgentType.PLAN: ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "Write"],
     AgentType.CODE: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
     AgentType.JIRA: [],  # MCP tools only — added at runtime from config
     AgentType.TEST: ["Bash"],
@@ -108,7 +108,12 @@ class Agent:
         if self.on_log:
             self.on_log(line)
 
-    async def run(self, prompt: str, resume_session_id: str | None = None) -> str | None:
+    async def run(
+        self,
+        prompt: str,
+        resume_session_id: str | None = None,
+        system_prompt: str | None = None,
+    ) -> str | None:
         """Run the agent with the given prompt via the Claude Code SDK.
 
         Returns the session_id on success (useful for resume), or None on failure.
@@ -136,6 +141,7 @@ class Agent:
             permission_mode="bypassPermissions",
             allowed_tools=self.effective_tools,
             resume=resume_session_id,
+            system_prompt=system_prompt,
             hooks={"PostToolUse": [HookMatcher(hooks=[_track_cost])]},
         )
 
