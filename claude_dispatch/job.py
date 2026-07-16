@@ -6,12 +6,14 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
+from claude_dispatch.cost_guard import CostGuard, CostLimitExceeded
 from claude_dispatch.db import get_session, upsert_session
 from claude_dispatch.hooks import (
     POST_AGENT_DONE,
@@ -163,6 +165,7 @@ class Job:
     async def _run_plan_phase(self) -> None:
         """Spawn the plan agent (Sonnet) and wait for job-plan.yaml."""
         self.phase = JobPhase.PLAN
+        guard = self._make_guard()
         plan_agent = Agent(
             spec=AgentSpec(
                 type=AgentType.PLAN,
@@ -171,8 +174,8 @@ class Job:
             ),
             job_id=self.job_id,
             agent_id=f"{self.job_id}-plan",
-            on_cost=self._on_agent_cost,
         )
+        plan_agent.on_cost = self._make_on_cost(plan_agent, guard)
         self.agents.append(plan_agent)
 
         resume_id = await self._db_resume_id(plan_agent)
@@ -196,6 +199,9 @@ class Job:
         except (TimeoutError, asyncio.TimeoutError):
             plan_agent.status = AgentStatus.FAILED
             raise RuntimeError(f"Plan phase timed out after {timeout}s (job {self.job_id})")
+        except CostLimitExceeded as exc:
+            logger.warning("job %s: plan agent killed by cost guard: %s", self.job_id, exc)
+            raise
 
         await self._db_upsert(plan_agent)
         await self._fire(
@@ -216,9 +222,20 @@ class Job:
 
         logger.info("job %s: plan phase complete (%s)", self.job_id, self.plan_path)
 
-    def _on_agent_cost(self, cost: float) -> None:
-        """Accumulate per-agent cost into the job total."""
-        self.cost_usd = sum(a.cost_usd for a in self.agents)
+    def _make_guard(self) -> CostGuard:
+        return CostGuard(
+            max_per_agent=self.config.limits.max_cost_per_agent,
+            max_per_job=self.config.limits.max_cost_per_job,
+        )
+
+    def _make_on_cost(self, agent: Agent, guard: CostGuard) -> Callable[[float], None]:
+        """Return an on_cost callback that updates job total then enforces limits."""
+
+        def on_cost(agent_cost: float) -> None:
+            self.cost_usd = sum(a.cost_usd for a in self.agents)
+            guard.check(agent_cost, self.cost_usd, agent.agent_id)
+
+        return on_cost
 
     async def _run_execute_phase(self) -> None:
         """Parse plan, create worktrees, spawn execution agents respecting deps."""
@@ -232,15 +249,16 @@ class Job:
         for wt in job_plan.worktrees:
             await self._create_worktree(wt.repo, wt.path, wt.branch)
 
-        agents = [
-            Agent(
+        guard = self._make_guard()
+        agents = []
+        for spec in job_plan.agents:
+            agent = Agent(
                 spec=spec,
                 job_id=self.job_id,
                 agent_id=f"{self.job_id}-{spec.type.value}",
-                on_cost=self._on_agent_cost,
             )
-            for spec in job_plan.agents
-        ]
+            agent.on_cost = self._make_on_cost(agent, guard)
+            agents.append(agent)
         for agent in agents:
             self.agents.append(agent)
 
@@ -298,6 +316,9 @@ class Job:
                         resume_session_id=resume_id,
                         system_prompt=EXECUTION_SYSTEM_PROMPT,
                     )
+                except CostLimitExceeded as e:
+                    logger.warning("agent %s killed by cost guard: %s", agent.agent_id, e)
+                    exc = e
                 except Exception as e:
                     logger.exception("agent %s failed", agent.agent_id)
                     exc = e
