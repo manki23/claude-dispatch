@@ -12,6 +12,7 @@ from pathlib import Path
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
+from claude_dispatch.db import get_session, upsert_session
 from claude_dispatch.prompts import (
     EXECUTION_SYSTEM_PROMPT,
     PLAN_SYSTEM_PROMPT,
@@ -49,6 +50,7 @@ class Job:
     agents: list[Agent] = field(default_factory=list)
     cost_usd: float = 0.0
     created_at: float = field(default_factory=time.time)
+    db_enabled: bool = True  # set False in tests that don't want real DB I/O
     _workdir: Path | None = field(default=None, init=False, repr=False)
 
     @property
@@ -68,6 +70,37 @@ class Job:
         running = sum(1 for a in self.agents if a.status == AgentStatus.RUNNING)
         total = len(self.agents)
         return f"{running}/{total}"
+
+    # ── DB helpers (never raise — DB errors must not crash the job) ──────────
+
+    async def _db_upsert(self, agent: Agent) -> None:
+        if not self.db_enabled or agent.session_id is None:
+            return
+        try:
+            await upsert_session(
+                job_id=self.job_id,
+                agent_type=agent.spec.type.value,
+                session_id=agent.session_id,
+                description=self.description,
+                status=agent.status.value,
+                cost_usd=agent.cost_usd,
+            )
+        except Exception:
+            logger.exception("db upsert failed for agent %s", agent.agent_id)
+
+    async def _db_resume_id(self, agent: Agent) -> str | None:
+        if not self.db_enabled:
+            return None
+        try:
+            return await get_session(
+                job_id=self.job_id,
+                agent_type=agent.spec.type.value,
+            )
+        except Exception:
+            logger.exception("db get_session failed for agent %s", agent.agent_id)
+            return None
+
+    # ── lifecycle ────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
         """Main job lifecycle: plan → execute → done."""
@@ -95,6 +128,7 @@ class Job:
         )
         self.agents.append(plan_agent)
 
+        resume_id = await self._db_resume_id(plan_agent)
         prompt = build_plan_prompt(
             description=self.description,
             plan_path=str(self.plan_path),
@@ -105,12 +139,18 @@ class Job:
 
         try:
             await asyncio.wait_for(
-                plan_agent.run(prompt, system_prompt=PLAN_SYSTEM_PROMPT),
+                plan_agent.run(
+                    prompt,
+                    resume_session_id=resume_id,
+                    system_prompt=PLAN_SYSTEM_PROMPT,
+                ),
                 timeout=timeout,
             )
         except (TimeoutError, asyncio.TimeoutError):
             plan_agent.status = AgentStatus.FAILED
             raise RuntimeError(f"Plan phase timed out after {timeout}s (job {self.job_id})")
+
+        await self._db_upsert(plan_agent)
 
         if not self.plan_path.exists():
             plan_agent.status = AgentStatus.FAILED
@@ -186,6 +226,7 @@ class Job:
             for dep_type in agent.spec.depends_on:
                 await done_events[dep_type].wait()
 
+            resume_id = await self._db_resume_id(agent)
             prompt = build_execution_prompt(
                 description=self.description,
                 agent_type=agent.spec.type.value,
@@ -194,12 +235,17 @@ class Job:
             exc: Exception | None = None
             async with sem:
                 try:
-                    await agent.run(prompt, system_prompt=EXECUTION_SYSTEM_PROMPT)
+                    await agent.run(
+                        prompt,
+                        resume_session_id=resume_id,
+                        system_prompt=EXECUTION_SYSTEM_PROMPT,
+                    )
                 except Exception as e:
                     logger.exception("agent %s failed", agent.agent_id)
                     exc = e
                 finally:
-                    # Always unblock dependants so they don't hang on a failed dep
+                    # Persist session regardless of outcome, then unblock dependants
+                    await self._db_upsert(agent)
                     done_events[agent.spec.type.value].set()
             if exc is not None:
                 raise exc
