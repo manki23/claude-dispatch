@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import aiosqlite
 
 from claude_dispatch.config import DB_FILE
@@ -21,8 +23,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 
-async def init_db() -> None:
-    async with aiosqlite.connect(DB_FILE) as db:
+async def init_db(db_path: Path = DB_FILE) -> None:
+    """Create the sessions table if it does not exist."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(db_path) as db:
         await db.execute(CREATE_TABLE)
         await db.commit()
 
@@ -34,16 +38,18 @@ async def upsert_session(
     description: str = "",
     status: str = "running",
     cost_usd: float = 0.0,
+    db_path: Path = DB_FILE,
 ) -> None:
-    async with aiosqlite.connect(DB_FILE) as db:
+    """Insert or update a session row."""
+    async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """
             INSERT INTO sessions (job_id, agent_type, session_id, description, status, cost_usd)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id, agent_type) DO UPDATE SET
                 session_id = excluded.session_id,
-                status = excluded.status,
-                cost_usd = excluded.cost_usd,
+                status     = excluded.status,
+                cost_usd   = excluded.cost_usd,
                 updated_at = datetime('now')
             """,
             (job_id, agent_type, session_id, description, status, cost_usd),
@@ -51,9 +57,13 @@ async def upsert_session(
         await db.commit()
 
 
-async def get_session(job_id: str, agent_type: str) -> str | None:
+async def get_session(
+    job_id: str,
+    agent_type: str,
+    db_path: Path = DB_FILE,
+) -> str | None:
     """Return the SDK session_id for a given job+agent, or None if not found."""
-    async with aiosqlite.connect(DB_FILE) as db:
+    async with aiosqlite.connect(db_path) as db:
         async with db.execute(
             "SELECT session_id FROM sessions WHERE job_id = ? AND agent_type = ?",
             (job_id, agent_type),
@@ -62,9 +72,9 @@ async def get_session(job_id: str, agent_type: str) -> str | None:
             return row[0] if row else None
 
 
-async def list_jobs() -> list[dict]:
-    """Return all known jobs with their latest status and cost."""
-    async with aiosqlite.connect(DB_FILE) as db:
+async def list_jobs(db_path: Path = DB_FILE) -> list[dict]:
+    """Return all known jobs with their latest status and aggregated cost."""
+    async with aiosqlite.connect(db_path) as db:
         async with db.execute(
             """
             SELECT job_id, description, status, SUM(cost_usd) as total_cost, MAX(updated_at)
@@ -84,3 +94,36 @@ async def list_jobs() -> list[dict]:
                 }
                 for r in rows
             ]
+
+
+async def list_agents(job_id: str, db_path: Path = DB_FILE) -> list[dict]:
+    """Return all agent rows for a specific job, ordered by creation time."""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            """
+            SELECT agent_type, session_id, status, cost_usd, created_at, updated_at
+            FROM sessions
+            WHERE job_id = ?
+            ORDER BY created_at ASC
+            """,
+            (job_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "agent_type": r[0],
+                    "session_id": r[1],
+                    "status": r[2],
+                    "cost_usd": r[3] or 0.0,
+                    "created_at": r[4],
+                    "updated_at": r[5],
+                }
+                for r in rows
+            ]
+
+
+async def delete_job(job_id: str, db_path: Path = DB_FILE) -> None:
+    """Remove all session rows for a job (used when a job is killed/discarded)."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("DELETE FROM sessions WHERE job_id = ?", (job_id,))
+        await db.commit()

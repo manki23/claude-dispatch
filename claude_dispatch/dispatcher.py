@@ -21,6 +21,9 @@ class DispatcherApp(App):
         self.config = config or load_config()
         self.jobs: list[Job] = jobs or []
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
+        from claude_dispatch.db import init_db
         from claude_dispatch.ui.screens.main import MainScreen
+
+        await init_db()
         self.push_screen(MainScreen(jobs=self.jobs))
