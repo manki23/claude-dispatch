@@ -5,100 +5,249 @@ from __future__ import annotations
 import time
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
-from claude_dispatch.config import Config
+from claude_dispatch.config import Config, Defaults
 from claude_dispatch.job import Job, JobPhase, JobStatus
 
 
 def make_mock_config() -> Config:
     return Config(
         repos={
-            "my-repo": "~/code/my-repo",
-            "my-other-repo": "~/code/my-other-repo",
-        }
+            "acme-api": "~/code/acme-api",
+            "acme-frontend": "~/code/acme-frontend",
+            "acme-infra": "~/code/acme-infra",
+        },
+        defaults=Defaults(
+            plan_model="claude-sonnet-4-6",
+            execute_model="claude-haiku-4-5-20251001",
+            max_parallel_agents=4,
+            plan_timeout_s=300,
+        ),
     )
 
 
 def make_mock_jobs() -> list[Job]:
     cfg = make_mock_config()
 
-    # Job 1 — running, execute phase, 4 agents
-    j1 = Job(description="TICKET-123: fix auth bug", config=cfg, job_id="abc123")
+    # ── Job 1: running, execute phase ────────────────────────────────────────
+    # code runs first; test depends on code; jira runs in parallel with code
+    j1 = Job(
+        description="TICKET-101: fix session expiry bug in auth service",
+        config=cfg,
+        job_id="abc123",
+        db_enabled=False,
+    )
     j1.phase = JobPhase.EXECUTE
     j1.status = JobStatus.RUNNING
-    j1.cost_usd = 0.09
+    j1.cost_usd = 0.14
     j1.created_at = time.time() - 23 * 60
 
     plan1 = Agent(
-        spec=AgentSpec(type=AgentType.PLAN),
-        job_id="abc123", agent_id="abc123-plan",
-        status=AgentStatus.DONE, cost_usd=0.02,
-        last_action="Produced job-plan.yaml",
-        log_lines=["Reading TICKET-123...", "Analysing codebase...", "Writing job-plan.yaml ✓"],
+        spec=AgentSpec(type=AgentType.PLAN, model="claude-sonnet-4-6"),
+        job_id="abc123",
+        agent_id="abc123-plan",
+        status=AgentStatus.DONE,
+        session_id="sess-abc123-plan",
+        cost_usd=0.03,
+        last_action="Write(job-plan.yaml)",
+        log_lines=[
+            "Reading TICKET-101 description...",
+            "Glob('acme-api/auth/**')...",
+            "Found session_manager.py, token_store.py",
+            "Drafting execution plan...",
+            "DONE: wrote job-plan.yaml (3 agents: code, test, jira)",
+        ],
     )
     code1 = Agent(
-        spec=AgentSpec(type=AgentType.CODE, cwd="~/code/my-repo"),
-        job_id="abc123", agent_id="abc123-code",
-        status=AgentStatus.RUNNING, cost_usd=0.05,
-        last_action="Editing auth/handler.go",
-        log_lines=["Reading auth/handler.go...", "Editing auth/handler.go...", "Running tests..."],
+        spec=AgentSpec(
+            type=AgentType.CODE,
+            cwd="~/code/acme-api",
+            allowed_tools=["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
+        ),
+        job_id="abc123",
+        agent_id="abc123-code",
+        status=AgentStatus.RUNNING,
+        session_id="sess-abc123-code",
+        cost_usd=0.08,
+        last_action="Edit(auth/session_manager.py)",
+        log_lines=[
+            "Reading auth/session_manager.py...",
+            "Found off-by-one in token expiry calculation (line 142)",
+            "Editing auth/session_manager.py...",
+            "Running: pytest tests/test_session.py...",
+            "3 tests pass, 1 still failing — investigating...",
+        ],
+    )
+    test1 = Agent(
+        spec=AgentSpec(
+            type=AgentType.TEST,
+            cwd="~/code/acme-api",
+            depends_on=["code"],
+        ),
+        job_id="abc123",
+        agent_id="abc123-test",
+        status=AgentStatus.WAITING,
+        cost_usd=0.0,
+        last_action="",
+        log_lines=[],
     )
     jira1 = Agent(
         spec=AgentSpec(type=AgentType.JIRA),
-        job_id="abc123", agent_id="abc123-jira",
-        status=AgentStatus.WAITING, cost_usd=0.0,
-        last_action="",
-        log_lines=[],
+        job_id="abc123",
+        agent_id="abc123-jira",
+        status=AgentStatus.RUNNING,
+        session_id="sess-abc123-jira",
+        cost_usd=0.03,
+        last_action="mcp__jira__editJiraIssue(...)",
+        log_lines=[
+            "Fetching TICKET-101 details...",
+            "Updating status to IN PROGRESS...",
+            "Adding comment: 'Root cause identified — session expiry off-by-one'",
+        ],
     )
-    test1 = Agent(
-        spec=AgentSpec(type=AgentType.TEST, cwd="~/code/my-repo"),
-        job_id="abc123", agent_id="abc123-test",
-        status=AgentStatus.WAITING, cost_usd=0.0,
-        last_action="",
-        log_lines=[],
-    )
-    j1.agents = [plan1, code1, jira1, test1]
+    j1.agents = [plan1, code1, test1, jira1]
 
-    # Job 2 — running, plan phase, 1 agent
-    j2 = Job(description="write-confluence-doc: V0 improvement plan", config=cfg, job_id="def456")
+    # ── Job 2: running, plan phase ────────────────────────────────────────────
+    j2 = Job(
+        description="write API docs for /v2/users endpoint",
+        config=cfg,
+        job_id="def456",
+        db_enabled=False,
+    )
     j2.phase = JobPhase.PLAN
     j2.status = JobStatus.RUNNING
-    j2.cost_usd = 0.03
+    j2.cost_usd = 0.02
     j2.created_at = time.time() - 4 * 60
 
     plan2 = Agent(
-        spec=AgentSpec(type=AgentType.PLAN),
-        job_id="def456", agent_id="def456-plan",
-        status=AgentStatus.RUNNING, cost_usd=0.03,
-        last_action="Reading Confluence docs...",
+        spec=AgentSpec(type=AgentType.PLAN, model="claude-sonnet-4-6"),
+        job_id="def456",
+        agent_id="def456-plan",
+        status=AgentStatus.RUNNING,
+        session_id="sess-def456-plan",
+        cost_usd=0.02,
+        last_action="Grep('v2/users')",
         log_lines=[
-            "Fetching Confluence pages...",
-            "Reading evaluation report...",
-            "Analysing LLMObs experiment data...",
+            "Reading task: write API docs for /v2/users endpoint",
+            "Glob('acme-api/routes/**')...",
+            "Grep('v2/users', 'acme-api/')...",
+            "Found: routes/v2/users.py, schemas/user.py",
+            "Analysing route handlers and response schemas...",
         ],
     )
     j2.agents = [plan2]
 
-    # Job 3 — done, all agents complete
-    j3 = Job(description="TICKET-456: update staging config", config=cfg, job_id="ghi789")
+    # ── Job 3: done, full run with session IDs ────────────────────────────────
+    j3 = Job(
+        description="TICKET-88: migrate database config to env vars",
+        config=cfg,
+        job_id="ghi789",
+        db_enabled=False,
+    )
     j3.phase = JobPhase.DONE
     j3.status = JobStatus.DONE
-    j3.cost_usd = 0.02
+    j3.cost_usd = 0.11
     j3.created_at = time.time() - 2 * 3600
 
     plan3 = Agent(
-        spec=AgentSpec(type=AgentType.PLAN),
-        job_id="ghi789", agent_id="ghi789-plan",
-        status=AgentStatus.DONE, cost_usd=0.01,
-        last_action="Produced job-plan.yaml",
-        log_lines=["Reading TICKET-456...", "Writing job-plan.yaml ✓"],
+        spec=AgentSpec(type=AgentType.PLAN, model="claude-sonnet-4-6"),
+        job_id="ghi789",
+        agent_id="ghi789-plan",
+        status=AgentStatus.DONE,
+        session_id="sess-ghi789-plan",
+        cost_usd=0.02,
+        last_action="Write(job-plan.yaml)",
+        log_lines=[
+            "Reading TICKET-88...",
+            "Mapping config keys to env vars...",
+            "DONE: wrote job-plan.yaml",
+        ],
     )
     code3 = Agent(
-        spec=AgentSpec(type=AgentType.CODE, cwd="~/code/my-other-repo"),
-        job_id="ghi789", agent_id="ghi789-code",
-        status=AgentStatus.DONE, cost_usd=0.01,
-        last_action="Committed changes",
-        log_lines=["Editing config.yaml...", "Running tests... ✓", "Committed ✓"],
+        spec=AgentSpec(type=AgentType.CODE, cwd="~/code/acme-infra"),
+        job_id="ghi789",
+        agent_id="ghi789-code",
+        status=AgentStatus.DONE,
+        session_id="sess-ghi789-code",
+        cost_usd=0.06,
+        last_action="Bash(git commit -m '...')",
+        log_lines=[
+            "Reading config/database.yaml...",
+            "Editing config/database.yaml → referencing env vars",
+            "Editing .env.example → adding DB_HOST, DB_PORT, DB_NAME",
+            "Running: make test → all pass",
+            "Bash(git add -p)...",
+            "DONE: committed changes, branch ready for PR",
+        ],
     )
-    j3.agents = [plan3, code3]
+    test3 = Agent(
+        spec=AgentSpec(type=AgentType.TEST, cwd="~/code/acme-infra", depends_on=["code"]),
+        job_id="ghi789",
+        agent_id="ghi789-test",
+        status=AgentStatus.DONE,
+        session_id="sess-ghi789-test",
+        cost_usd=0.02,
+        last_action="Bash(make test)",
+        log_lines=["Running: make test...", "42 passed, 0 failed", "DONE: all tests green"],
+    )
+    jira3 = Agent(
+        spec=AgentSpec(type=AgentType.JIRA),
+        job_id="ghi789",
+        agent_id="ghi789-jira",
+        status=AgentStatus.DONE,
+        session_id="sess-ghi789-jira",
+        cost_usd=0.01,
+        last_action="mcp__jira__transitionJiraIssue(...)",
+        log_lines=["Transitioning TICKET-88 to DONE...", "Added completion comment", "DONE"],
+    )
+    j3.agents = [plan3, code3, test3, jira3]
 
-    return [j1, j2, j3]
+    # ── Job 4: failed — code agent crashed ───────────────────────────────────
+    j4 = Job(
+        description="TICKET-99: refactor payment processor",
+        config=cfg,
+        job_id="jkl012",
+        db_enabled=False,
+    )
+    j4.phase = JobPhase.EXECUTE
+    j4.status = JobStatus.FAILED
+    j4.cost_usd = 0.07
+    j4.created_at = time.time() - 45 * 60
+
+    plan4 = Agent(
+        spec=AgentSpec(type=AgentType.PLAN, model="claude-sonnet-4-6"),
+        job_id="jkl012",
+        agent_id="jkl012-plan",
+        status=AgentStatus.DONE,
+        session_id="sess-jkl012-plan",
+        cost_usd=0.02,
+        last_action="Write(job-plan.yaml)",
+        log_lines=["Reading TICKET-99...", "DONE: wrote job-plan.yaml"],
+    )
+    code4 = Agent(
+        spec=AgentSpec(type=AgentType.CODE, cwd="~/code/acme-api"),
+        job_id="jkl012",
+        agent_id="jkl012-code",
+        status=AgentStatus.FAILED,
+        session_id="sess-jkl012-code",
+        cost_usd=0.05,
+        last_action="Bash(make build)",
+        log_lines=[
+            "Reading payments/processor.py...",
+            "Refactoring charge() method...",
+            "Bash(make build)...",
+            "[error] compilation failed: undefined: stripe.ChargeParams",
+            "[error] ProcessError: agent exited with code 1",
+        ],
+    )
+    test4 = Agent(
+        spec=AgentSpec(type=AgentType.TEST, cwd="~/code/acme-api", depends_on=["code"]),
+        job_id="jkl012",
+        agent_id="jkl012-test",
+        status=AgentStatus.WAITING,
+        cost_usd=0.0,
+        last_action="",
+        log_lines=[],
+    )
+    j4.agents = [plan4, code4, test4]
+
+    return [j1, j2, j3, j4]
