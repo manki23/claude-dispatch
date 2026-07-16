@@ -20,6 +20,7 @@ def start(mock: bool) -> None:
     jobs = []
     if mock:
         from claude_dispatch.mock import make_mock_jobs
+
         jobs = make_mock_jobs()
 
     app = DispatcherApp(jobs=jobs)

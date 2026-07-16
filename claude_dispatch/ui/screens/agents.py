@@ -13,10 +13,10 @@ from claude_dispatch.job import Job
 
 _STATUS_ICONS: dict[str, str] = {
     AgentStatus.RUNNING: "[green]● running[/green]",
-    AgentStatus.DONE:    "[dim green]✓ done[/dim green]",
+    AgentStatus.DONE: "[dim green]✓ done[/dim green]",
     AgentStatus.WAITING: "[dim]○ waiting[/dim]",
-    AgentStatus.FAILED:  "[red]✗ failed[/red]",
-    AgentStatus.KILLED:  "[dim red]⊘ killed[/dim red]",
+    AgentStatus.FAILED: "[red]✗ failed[/red]",
+    AgentStatus.KILLED: "[dim red]⊘ killed[/dim red]",
 }
 
 
@@ -83,6 +83,7 @@ class AgentsScreen(Screen):
         agent = self._selected_agent()
         if agent:
             from claude_dispatch.ui.screens.logs import LogsScreen
+
             self.app.push_screen(LogsScreen(job=self._job, agent=agent))
 
     def action_kill_agent(self) -> None:

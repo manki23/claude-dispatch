@@ -57,9 +57,9 @@ class LogsScreen(Screen):
 def _status_markup(status: str) -> str:
     icons = {
         "running": "[green]● running[/green]",
-        "done":    "[dim green]✓ done[/dim green]",
+        "done": "[dim green]✓ done[/dim green]",
         "waiting": "[dim]○ waiting[/dim]",
-        "failed":  "[red]✗ failed[/red]",
-        "killed":  "[dim red]⊘ killed[/dim red]",
+        "failed": "[red]✗ failed[/red]",
+        "killed": "[dim red]⊘ killed[/dim red]",
     }
     return icons.get(status, status)
