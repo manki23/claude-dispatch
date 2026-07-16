@@ -14,9 +14,9 @@ from claude_dispatch.job import Job, JobStatus
 
 _STATUS_ICONS: dict[str, str] = {
     JobStatus.RUNNING: "[green]●[/green]",
-    JobStatus.DONE:    "[dim green]✓[/dim green]",
-    JobStatus.FAILED:  "[red]✗[/red]",
-    JobStatus.KILLED:  "[dim red]⊘[/dim red]",
+    JobStatus.DONE: "[dim green]✓[/dim green]",
+    JobStatus.FAILED: "[red]✗[/red]",
+    JobStatus.KILLED: "[dim red]⊘[/dim red]",
 }
 
 
@@ -73,10 +73,7 @@ class MainScreen(Screen):
         cursor_row = table.cursor_row
         table.clear()
         for job in self.jobs:
-            running_agents = sum(
-                1 for a in job.agents
-                if a.status.value == "running"
-            )
+            running_agents = sum(1 for a in job.agents if a.status.value == "running")
             total_agents = len(job.agents)
             table.add_row(
                 _STATUS_ICONS.get(job.status, ""),
@@ -115,10 +112,11 @@ class MainScreen(Screen):
         )
         if description:
             from claude_dispatch.job import Job
+
             job = Job(description=description, config=self.app.config)
             self.jobs.append(job)
             self._refresh()
-            # TODO: kick off job.run() as a background task
+            self.app.run_worker(job.run(), exclusive=False)
 
     async def action_message_job(self) -> None:
         job = self._selected_job()
@@ -133,12 +131,13 @@ class MainScreen(Screen):
             )
         )
         if message:
-            job.send_message(message)
+            await job.send_message(message)
 
     def action_drill_in(self) -> None:
         job = self._selected_job()
         if job:
             from claude_dispatch.ui.screens.agents import AgentsScreen
+
             self.app.push_screen(AgentsScreen(job=job))
 
     def action_kill_job(self) -> None:
@@ -153,16 +152,75 @@ class MainScreen(Screen):
         job_id = await self.app.push_screen_wait(
             PromptModal(label="Resume job-id >", placeholder="e.g. abc123")
         )
-        if job_id:
-            # TODO: load session from DB and push AgentsScreen
-            pass
+        if not job_id:
+            return
+
+        # Check if job is already loaded
+        existing = next((j for j in self.jobs if j.job_id == job_id), None)
+        if existing:
+            from claude_dispatch.ui.screens.agents import AgentsScreen
+
+            self.app.push_screen(AgentsScreen(job=existing))
+            return
+
+        # Try to reconstruct from DB
+        from claude_dispatch.db import list_agents, list_jobs
+
+        known = await list_jobs()
+        row = next((r for r in known if r["job_id"] == job_id), None)
+        if row is None:
+            self.notify(f"No job found with id '{job_id}'", severity="error")
+            return
+
+        from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
+        from claude_dispatch.job import Job, JobStatus
+
+        raw_status = row["status"]
+        job_status = (
+            JobStatus(raw_status) if raw_status in JobStatus._value2member_map_ else JobStatus.DONE
+        )
+        job = Job(
+            description=row["description"],
+            config=self.app.config,
+            job_id=job_id,
+            status=job_status,
+        )
+        agent_rows = await list_agents(job_id)
+        for ar in agent_rows:
+            try:
+                agent_type = AgentType(ar["agent_type"])
+            except ValueError:
+                continue
+            raw_agent_status = ar["status"]
+            agent_status = (
+                AgentStatus(raw_agent_status)
+                if raw_agent_status in AgentStatus._value2member_map_
+                else AgentStatus.DONE
+            )
+            agent = Agent(
+                spec=AgentSpec(type=agent_type),
+                job_id=job_id,
+                agent_id=f"{job_id}-{ar['agent_type']}",
+                status=agent_status,
+                session_id=ar["session_id"],
+                cost_usd=ar["cost_usd"] or 0.0,
+            )
+            job.agents.append(agent)
+
+        self.jobs.append(job)
+        self._refresh()
+        from claude_dispatch.ui.screens.agents import AgentsScreen
+
+        self.app.push_screen(AgentsScreen(job=job))
 
     def action_show_costs(self) -> None:
         from claude_dispatch.ui.modals.cost import CostModal
+
         self.app.push_screen(CostModal(jobs=self.jobs))
 
     def action_show_help(self) -> None:
         from claude_dispatch.ui.modals.help import HelpModal
+
         self.app.push_screen(HelpModal())
 
     def action_quit(self) -> None:
