@@ -1,0 +1,18 @@
+#!/bin/bash
+# Example: post_session_end hook
+# Fires after the Dispatcher TUI closes.
+# Copy to ~/.claude-dispatch/hooks/post_session_end and make executable.
+#
+# Usage: chmod +x ~/.claude-dispatch/hooks/post_session_end
+
+set -euo pipefail
+
+payload=$(cat)  # JSON from stdin
+
+total_cost=$(echo "$payload" | python3 -c "import sys,json; print(json.load(sys.stdin)['total_cost'])")
+jobs_completed=$(echo "$payload" | python3 -c "import sys,json; print(json.load(sys.stdin)['jobs_completed'])")
+
+echo "[claude-dispatch] Session ended — $jobs_completed jobs completed, total cost: \$$total_cost"
+
+# Example: trigger your own end-of-session tooling here
+# your-tool end-of-session --cost "$total_cost"

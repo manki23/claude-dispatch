@@ -1,0 +1,20 @@
+#!/bin/bash
+# Example: post_job_complete hook
+# Fires after a Job finishes (success or failure).
+# Copy to ~/.claude-dispatch/hooks/post_job_complete and make executable.
+#
+# Usage: chmod +x ~/.claude-dispatch/hooks/post_job_complete
+
+set -euo pipefail
+
+payload=$(cat)  # JSON from stdin
+
+job_id=$(echo "$payload"      | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+description=$(echo "$payload" | python3 -c "import sys,json; print(json.load(sys.stdin)['description'])")
+status=$(echo "$payload"      | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+cost=$(echo "$payload"        | python3 -c "import sys,json; print(json.load(sys.stdin)['cost'])")
+
+echo "[claude-dispatch] Job $job_id ($description) → $status | cost: \$$cost"
+
+# Example: update a project tracker, send a notification, etc.
+# your-tool update --job "$job_id" --status "$status"
