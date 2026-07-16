@@ -25,6 +25,7 @@ class AgentsScreen(Screen):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("c", "converse", "Converse", show=True),
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
     ]
@@ -86,6 +87,13 @@ class AgentsScreen(Screen):
             from claude_dispatch.ui.screens.logs import LogsScreen
 
             self.app.push_screen(LogsScreen(job=self._job, agent=agent))
+
+    def action_converse(self) -> None:
+        agent = self._selected_agent()
+        if agent:
+            from claude_dispatch.ui.screens.conversation import ConversationScreen
+
+            self.app.push_screen(ConversationScreen(job=self._job, agent=agent))
 
     async def action_message_agent(self) -> None:
         agent = self._selected_agent()

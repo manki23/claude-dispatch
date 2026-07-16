@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from claude_code_sdk import ClaudeCodeOptions, query
 from claude_code_sdk.types import (
@@ -37,6 +37,37 @@ class AgentStatus(str, Enum):
     DONE = "done"
     FAILED = "failed"
     KILLED = "killed"
+
+
+@dataclass
+class Turn:
+    """One turn in a conversation (user message or assistant text reply)."""
+
+    role: Literal["user", "assistant"]
+    text: str
+
+
+@dataclass
+class ConversationThread:
+    """Tracked chat history for an agent session.
+
+    Populated by Agent._run_turn(): user prompts → 'user' turns,
+    TextBlock responses → 'assistant' turns (tool calls excluded).
+    Persists across Esc/reopen via session_id.
+    """
+
+    turns: list[Turn] = field(default_factory=list)
+    # Fired after each new assistant turn is appended.
+    on_reply: Callable[[Turn], None] | None = field(default=None, repr=False)
+
+    def add_user(self, text: str) -> None:
+        self.turns.append(Turn(role="user", text=text))
+
+    def add_assistant(self, text: str) -> None:
+        turn = Turn(role="assistant", text=text)
+        self.turns.append(turn)
+        if self.on_reply:
+            self.on_reply(turn)
 
 
 # Default allowed tools per agent type.
@@ -94,6 +125,15 @@ class Agent:
     # Inbox for messages injected while the agent is running or after it finishes.
     # Messages are picked up at turn boundaries (between SDK query() calls).
     _inbox: asyncio.Queue[str] = field(default_factory=asyncio.Queue, init=False, repr=False)
+
+    # Lazily-created conversation thread (None until first converse() call).
+    conversation: ConversationThread | None = field(default=None, repr=False)
+
+    def get_or_create_conversation(self) -> ConversationThread:
+        """Return existing thread or create one on first access."""
+        if self.conversation is None:
+            self.conversation = ConversationThread()
+        return self.conversation
 
     @property
     def model(self) -> str:
@@ -192,15 +232,24 @@ class Agent:
             mcp_servers=self.spec.mcp_config_path or {},
         )
 
+        # Record the user prompt in the conversation thread if one exists.
+        if self.conversation is not None:
+            self.conversation.add_user(prompt)
+
         try:
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, AssistantMessage):
+                    assistant_texts: list[str] = []
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             self._append_log(block.text)
+                            assistant_texts.append(block.text)
                         elif isinstance(block, ToolUseBlock):
                             self.last_action = f"{block.name}(...)"
                             self._append_log(f"[tool] {block.name}")
+                    # Flush accumulated text as one assistant turn.
+                    if assistant_texts and self.conversation is not None:
+                        self.conversation.add_assistant("\n".join(assistant_texts))
                 elif isinstance(message, ResultMessage):
                     self.session_id = message.session_id
                     if message.total_cost_usd is not None:
