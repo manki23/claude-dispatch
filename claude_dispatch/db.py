@@ -6,7 +6,6 @@ import aiosqlite
 
 from claude_dispatch.config import DB_FILE
 
-
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS sessions (
     job_id      TEXT NOT NULL,

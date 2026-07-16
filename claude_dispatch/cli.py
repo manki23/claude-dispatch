@@ -12,11 +12,17 @@ def main() -> None:
 
 
 @main.command()
-def start() -> None:
+@click.option("--mock", is_flag=True, default=False, help="Load mock jobs for UI development.")
+def start(mock: bool) -> None:
     """Start the Dispatcher TUI."""
     from claude_dispatch.dispatcher import DispatcherApp
 
-    app = DispatcherApp()
+    jobs = []
+    if mock:
+        from claude_dispatch.mock import make_mock_jobs
+        jobs = make_mock_jobs()
+
+    app = DispatcherApp(jobs=jobs)
     app.run()
 
 
