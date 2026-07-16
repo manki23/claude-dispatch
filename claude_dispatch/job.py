@@ -243,9 +243,10 @@ class Job:
         if not self.plan_path.exists():
             return
 
-        from claude_dispatch.plan import parse_plan
+        from claude_dispatch.plan import parse_plan, validate_plan
 
         job_plan = parse_plan(self.plan_path)
+        validate_plan(job_plan, self.config)
         for wt in job_plan.worktrees:
             await self._create_worktree(wt.repo, wt.path, wt.branch)
 
