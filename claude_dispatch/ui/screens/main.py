@@ -330,53 +330,14 @@ class MainScreen(Screen[None]):
             self.app.push_screen(AgentsScreen(job=existing))
             return
 
-        # Try to reconstruct from DB
-        from claude_dispatch.db import list_agents, list_jobs
+        # Reconstruct from DB using the canonical shared loader
+        from claude_dispatch.db import load_jobs_from_db
 
-        known = await list_jobs()
-        row = next((r for r in known if r["job_id"] == job_id), None)
-        if row is None:
+        all_jobs = await load_jobs_from_db(self.app.config)  # type: ignore[attr-defined]
+        job = next((j for j in all_jobs if j.job_id == job_id), None)
+        if job is None:
             self.notify(f"No job found with id '{job_id}'", severity="error")
             return
-
-        from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
-        from claude_dispatch.job import Job, JobStatus
-
-        try:
-            job_status = JobStatus(row["status"])
-        except (ValueError, TypeError):
-            job_status = JobStatus.DONE
-
-        job = Job(
-            description=row["description"] or "",
-            instructions=row.get("instructions") or "",
-            config=self.app.config,  # type: ignore[attr-defined]
-            job_id=job_id,
-            status=job_status,
-        )
-        agent_rows = await list_agents(job_id)
-        for ar in agent_rows:
-            try:
-                agent_type = AgentType(ar["agent_type"])
-            except ValueError:
-                continue
-            try:
-                agent_status = AgentStatus(ar["status"])
-            except (ValueError, TypeError):
-                agent_status = AgentStatus.DONE
-            # Jobs loaded from DB are never still running — the process is dead.
-            # Force RUNNING → DONE so the agent is resumable via send_message.
-            if agent_status == AgentStatus.RUNNING:
-                agent_status = AgentStatus.DONE
-            agent = Agent(
-                spec=AgentSpec(type=agent_type),
-                job_id=job_id,
-                agent_id=f"{job_id}-{ar['agent_type']}",
-                status=agent_status,
-                session_id=ar["session_id"],
-                cost_usd=ar["cost_usd"] or 0.0,
-            )
-            job.agents.append(agent)
 
         self.jobs.append(job)
         self._refresh()

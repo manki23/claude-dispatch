@@ -2,80 +2,21 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from textual.app import App
 from textual.worker import Worker, WorkerState
 
-from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
+from claude_dispatch.agent import Agent, AgentSpec, AgentType
 from claude_dispatch.config import Config, load_config
 from claude_dispatch.job import Job
 
 
 async def _load_jobs_from_db(config: Config) -> list[Job]:
-    """Reconstruct Job+Agent objects from the DB for all previously-run jobs."""
-    from claude_dispatch.agent import AgentSpec, AgentType
-    from claude_dispatch.db import list_agents, list_jobs
-    from claude_dispatch.job import Job, JobStatus
+    """Load all jobs from DB at startup."""
+    from claude_dispatch.db import load_jobs_from_db
 
-    job_rows = await list_jobs()
-    jobs: list[Job] = []
-
-    for row in job_rows:
-        try:
-            job_status = JobStatus(row["status"])
-        except (ValueError, TypeError):
-            job_status = JobStatus.DONE
-
-        job = Job(
-            description=row["description"] or "",
-            instructions=row.get("instructions") or "",
-            config=config,
-            job_id=row["job_id"],
-            status=job_status,
-            db_enabled=True,
-        )
-
-        agent_rows = await list_agents(row["job_id"])
-        for ar in agent_rows:
-            try:
-                agent_type = AgentType(ar["agent_type"])
-            except ValueError:
-                continue
-            try:
-                agent_status = AgentStatus(ar["status"])
-            except (ValueError, TypeError):
-                agent_status = AgentStatus.DONE
-
-            # If PID is stored, check if process is actually still alive
-            pid = ar.get("pid")
-            if agent_status == AgentStatus.RUNNING and pid:
-                try:
-                    os.kill(pid, 0)  # signal 0 — checks existence only
-                except (ProcessLookupError, PermissionError):
-                    agent_status = AgentStatus.FAILED  # process is gone
-
-            agent = Agent(
-                spec=AgentSpec(type=agent_type),
-                job_id=row["job_id"],
-                agent_id=f"{row['job_id']}-{ar['agent_type']}",
-                status=agent_status,
-                session_id=ar["session_id"],
-                cost_usd=ar["cost_usd"] or 0.0,
-                log_path=ar.get("log_path"),
-            )
-            # Populate in-memory log lines from log file (if available)
-            if agent.log_path:
-                lp = Path(agent.log_path)
-                if lp.exists():
-                    agent.log_lines = lp.read_text().splitlines()
-
-            job.agents.append(agent)
-
-        jobs.append(job)
-
-    return jobs
+    return await load_jobs_from_db(config)  # type: ignore[return-value]
 
 
 class DispatcherApp(App[None]):

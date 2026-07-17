@@ -18,13 +18,17 @@ _KEY_HINTS = (
     f"  {key_hint('space')}  Select"
 )
 
-_STATUS_ICONS: dict[str, str] = {
-    AgentStatus.RUNNING: "[green]● running[/green]",
-    AgentStatus.DONE: "[dim green]✓ done[/dim green]",
-    AgentStatus.WAITING: "[dim]○ waiting[/dim]",
-    AgentStatus.FAILED: "[red]✗ failed[/red]",
-    AgentStatus.KILLED: "[dim red]⊘ killed[/dim red]",
-}
+
+def agent_status_markup(status: str) -> str:
+    """Shared Rich markup for agent status strings — used by AgentsScreen and LogsScreen."""
+    icons = {
+        "running": "[green]● running[/green]",
+        "done": "[dim green]✓ done[/dim green]",
+        "waiting": "[dim]○ waiting[/dim]",
+        "failed": "[red]✗ failed[/red]",
+        "killed": "[dim red]⊘ killed[/dim red]",
+    }
+    return icons.get(status, f"[dim]{status}[/dim]")
 
 
 class AgentsScreen(Screen[None]):
@@ -87,7 +91,7 @@ class AgentsScreen(Screen[None]):
                 "☑" if agent.agent_id in self._selected else "☐",
                 agent.spec.type.value,
                 agent.model,
-                _STATUS_ICONS.get(agent.status, agent.status.value),
+                agent_status_markup(agent.status.value),
                 f"${agent.cost_usd:.4f}",
                 session_display,
                 agent.last_action or "[dim]—[/dim]",

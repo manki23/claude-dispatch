@@ -15,6 +15,7 @@ from textual.widgets import Footer, Label, RichLog
 
 from claude_dispatch.agent import Agent
 from claude_dispatch.job import Job
+from claude_dispatch.ui.screens.agents import agent_status_markup
 from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
 
 _KEY_HINTS = (
@@ -23,17 +24,6 @@ _KEY_HINTS = (
     f"  {key_hint('f')}  Fullscreen     {key_hint('end')}  Scroll end\n"
     f"  {key_hint('ctrl+y')}  Copy log"
 )
-
-
-def _status_markup(status: str) -> str:
-    icons = {
-        "running": "[green]● running[/green]",
-        "done": "[dim green]✓ done[/dim green]",
-        "waiting": "[dim]○ waiting[/dim]",
-        "failed": "[red]✗ failed[/red]",
-        "killed": "[dim red]⊘ killed[/dim red]",
-    }
-    return icons.get(status, f"[dim]{status}[/dim]")
 
 
 class LogsScreen(Screen[None]):
@@ -69,7 +59,7 @@ class LogsScreen(Screen[None]):
             yield Label("", id="breadcrumb")
             yield Label(
                 f"[dim]model:[/dim] {self._agent.model}  "
-                f"[dim]status:[/dim] {_status_markup(status)}  "
+                f"[dim]status:[/dim] {agent_status_markup(status)}  "
                 f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}",
                 id="log-header",
             )
@@ -131,7 +121,7 @@ class LogsScreen(Screen[None]):
         scroll_indicator = "[green]on[/green]" if self._autoscroll else "[dim red]off[/dim red]"
         self.query_one("#log-header", Label).update(
             f"[dim]model:[/dim] {self._agent.model}  "
-            f"[dim]status:[/dim] {_status_markup(self._agent.status.value)}  "
+            f"[dim]status:[/dim] {agent_status_markup(self._agent.status.value)}  "
             f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}  "
             f"[dim]auto-scroll:[/dim] {scroll_indicator}"
         )
