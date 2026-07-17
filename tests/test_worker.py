@@ -105,8 +105,12 @@ async def test_dispatcher_loads_jobs_from_db_on_restart() -> None:
 
     await init_db()
     await upsert_session(
-        "persist-job-1", "plan", "sess-p1",
-        description="Persistent task", status="done", cost_usd=0.01,
+        "persist-job-1",
+        "plan",
+        "sess-p1",
+        description="Persistent task",
+        status="done",
+        cost_usd=0.01,
     )
 
     jobs = await _load_jobs_from_db(Config())
@@ -133,8 +137,11 @@ async def test_dead_pid_corrected_to_failed_on_load() -> None:
     dead_pid = 9999999
 
     await upsert_session(
-        "dead-pid-job", "code", "sess-dead",
-        description="Dead worker test", status="running",
+        "dead-pid-job",
+        "code",
+        "sess-dead",
+        description="Dead worker test",
+        status="running",
     )
     await upsert_worker_meta("dead-pid-job", "code", dead_pid, "/tmp/dead.log")
 
@@ -172,8 +179,13 @@ async def test_spawn_worker_falls_back_to_in_process_when_flag_false(tmp_path: P
     async def fake_query(prompt, options):
         query_called[0] = True
         yield ResultMessage(
-            subtype="result", duration_ms=1, duration_api_ms=1,
-            is_error=False, num_turns=1, session_id="sess-inproc", total_cost_usd=0.001,
+            subtype="result",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="sess-inproc",
+            total_cost_usd=0.001,
         )
 
     with patch("claude_dispatch.agent.query", fake_query):

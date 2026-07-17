@@ -39,6 +39,7 @@ def run(description: str) -> None:
     import asyncio
     import sys
 
+    from claude_dispatch.agent import Agent
     from claude_dispatch.config import load_config
     from claude_dispatch.job import Job, JobStatus
 
@@ -48,7 +49,7 @@ def run(description: str) -> None:
 
     click.echo(f"[claude-dispatch] job {job.job_id} started: {description!r}")
 
-    def _on_agent_ready(agent) -> None:
+    def _on_agent_ready(agent: Agent) -> None:
         """Attach a stdout log printer to every agent as soon as it is created."""
         agent_type = agent.spec.type.value
 

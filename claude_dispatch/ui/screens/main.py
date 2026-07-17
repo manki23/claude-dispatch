@@ -30,7 +30,7 @@ def _fmt_age(created_at: float) -> str:
     return f"{secs // 3600}h"
 
 
-class MainScreen(Screen):
+class MainScreen(Screen[None]):
     """Home screen: list of all Jobs with live status, phase, agents, cost, age."""
 
     BINDINGS = [
@@ -112,7 +112,7 @@ class MainScreen(Screen):
             display = (name or "").strip() or instructions[:60]
             from claude_dispatch.job import Job
 
-            job = Job(description=display, instructions=instructions, config=self.app.config)
+            job = Job(description=display, instructions=instructions, config=self.app.config)  # type: ignore[attr-defined]
             self.jobs.append(job)
             self._refresh()
             self.app.run_worker(job.run(), exclusive=False)
@@ -215,7 +215,7 @@ class MainScreen(Screen):
         job = Job(
             description=row["description"] or "",
             instructions=row.get("instructions") or "",
-            config=self.app.config,
+            config=self.app.config,  # type: ignore[attr-defined]
             job_id=job_id,
             status=job_status,
         )
@@ -250,7 +250,7 @@ class MainScreen(Screen):
         self.app.push_screen(AgentsScreen(job=job))
 
     def action_dispatcher(self) -> None:
-        self.app.open_dispatcher_conversation()
+        self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]
 
     def action_show_costs(self) -> None:
         from claude_dispatch.ui.modals.cost import CostModal

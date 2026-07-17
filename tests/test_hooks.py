@@ -83,7 +83,7 @@ def test_post_job_done_payload_status_failed() -> None:
 @pytest.mark.asyncio
 async def test_fire_skips_if_disabled(tmp_path: Path) -> None:
     """enabled=False → hook never called even if file exists."""
-    hook = make_executable_hook(tmp_path, "pre_job_start", "#!/bin/sh\nexit 0\n")
+    make_executable_hook(tmp_path, "pre_job_start", "#!/bin/sh\nexit 0\n")
     # If fire respects enabled=False, the proc is never created
     with patch("claude_dispatch.hooks.asyncio.create_subprocess_exec") as mock_exec:
         await fire(PRE_JOB_START, {}, hooks_dir=tmp_path, enabled=False)

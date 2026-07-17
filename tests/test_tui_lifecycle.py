@@ -172,8 +172,6 @@ async def test_message_job_calls_send_message(mock_app) -> None:
     """Typing a message queues run_worker(job.send_message(...))."""
     async with mock_app.run_test():
         screen = mock_app.screen
-        job = mock_app.jobs[0]
-
         screen.app.push_screen = make_push_screen_stub("please add logging")
 
         worker_coroutines = []

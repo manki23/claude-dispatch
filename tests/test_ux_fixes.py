@@ -18,9 +18,6 @@ async def test_message_job_notifies_when_no_job_selected() -> None:
     from claude_dispatch.dispatcher import DispatcherApp
 
     app = DispatcherApp(config=Config(), jobs=[])
-    notifications: list[dict] = []
-
-    original_notify = app.notify
 
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
@@ -57,14 +54,9 @@ async def test_resume_job_handles_unknown_status_gracefully(tmp_path) -> None:
         )
         await db.commit()
 
-    from claude_dispatch.ui.screens.main import MainScreen
-
-    job = Job(description="placeholder", config=Config(), db_enabled=False)
-    screen = MainScreen(jobs=[])
-
     from claude_dispatch.dispatcher import DispatcherApp
 
-    app = DispatcherApp(config=Config(), jobs=[])
+    DispatcherApp(config=Config(), jobs=[])
 
     # Call _resume_job directly with the DB file override via monkeypatching
     # We test the enum parsing logic directly instead
@@ -173,6 +165,7 @@ async def test_logs_screen_header_refreshes_after_agent_done() -> None:
         screen._refresh_header()  # type: ignore
 
         from textual.widgets import Label
+
         header = screen.query_one("#log-header", Label)
         # _refresh_header ran without error — label exists and has content
         assert header is not None
@@ -209,6 +202,7 @@ async def test_agents_screen_header_refreshes() -> None:
         screen._refresh_header()  # type: ignore
 
         from textual.widgets import Label
+
         header = screen.query_one("#agents-header", Label)
         assert header is not None
 

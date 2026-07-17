@@ -98,9 +98,11 @@ def _make_assistant_message(text: str = "done", tool_name: str | None = None) ->
 
 async def _fake_query(messages: list[Any]):
     """Returns an async generator that yields the given messages."""
+
     async def _gen(*args: Any, **kwargs: Any):
         for msg in messages:
             yield msg
+
     return _gen
 
 

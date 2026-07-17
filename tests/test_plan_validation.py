@@ -38,9 +38,7 @@ def test_parse_plan_full(tmp_path: Path) -> None:
             {"type": "code", "cwd": "/tmp/wt", "allowed_tools": ["Bash"], "depends_on": []},
             {"type": "test", "cwd": "/tmp/wt", "depends_on": ["code"]},
         ],
-        "resources": {
-            "worktrees": [{"repo": "acme-api", "path": "/tmp/wt", "branch": "fix/auth"}]
-        },
+        "resources": {"worktrees": [{"repo": "acme-api", "path": "/tmp/wt", "branch": "fix/auth"}]},
     }
     (tmp_path / "plan.yaml").write_text(yaml.dump(raw))
     plan = parse_plan(tmp_path / "plan.yaml")
@@ -77,9 +75,7 @@ def test_parse_plan_not_a_mapping(tmp_path: Path) -> None:
 
 
 def test_parse_plan_unknown_agent_type(tmp_path: Path) -> None:
-    (tmp_path / "plan.yaml").write_text(
-        yaml.dump({"agents": [{"type": "hacker"}]})
-    )
+    (tmp_path / "plan.yaml").write_text(yaml.dump({"agents": [{"type": "hacker"}]}))
     with pytest.raises(PlanValidationError) as exc_info:
         parse_plan(tmp_path / "plan.yaml")
     assert "unknown type 'hacker'" in str(exc_info.value)
@@ -135,10 +131,12 @@ def test_validate_plan_empty_is_valid() -> None:
 
 
 def test_validate_plan_valid_with_deps() -> None:
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.CODE, cwd="/tmp"),
-        AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.CODE, cwd="/tmp"),
+            AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),
+        ]
+    )
     validate_plan(plan)  # must not raise
 
 
@@ -152,10 +150,12 @@ def test_validate_plan_jira_no_cwd_is_valid() -> None:
 
 
 def test_validate_plan_duplicate_agent_type() -> None:
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.CODE, cwd="/tmp"),
-        AgentSpec(type=AgentType.CODE, cwd="/tmp/other"),
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.CODE, cwd="/tmp"),
+            AgentSpec(type=AgentType.CODE, cwd="/tmp/other"),
+        ]
+    )
     with pytest.raises(PlanValidationError, match="Duplicate agent type: 'code'"):
         validate_plan(plan)
 
@@ -188,9 +188,11 @@ def test_validate_plan_cwd_with_value_is_ok() -> None:
 
 
 def test_validate_plan_unknown_dep() -> None:
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),  # code not in plan
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),  # code not in plan
+        ]
+    )
     with pytest.raises(PlanValidationError, match="depends_on unknown type 'code'"):
         validate_plan(plan)
 
@@ -199,28 +201,34 @@ def test_validate_plan_unknown_dep() -> None:
 
 
 def test_validate_plan_cycle_two_agents() -> None:
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.CODE, cwd="/tmp", depends_on=["test"]),
-        AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.CODE, cwd="/tmp", depends_on=["test"]),
+            AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),
+        ]
+    )
     with pytest.raises(PlanValidationError, match="Cycle"):
         validate_plan(plan)
 
 
 def test_validate_plan_self_dependency_is_cycle() -> None:
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.CODE, cwd="/tmp", depends_on=["code"]),
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.CODE, cwd="/tmp", depends_on=["code"]),
+        ]
+    )
     with pytest.raises(PlanValidationError, match="Cycle"):
         validate_plan(plan)
 
 
 def test_validate_plan_chain_no_cycle() -> None:
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.CODE, cwd="/tmp"),
-        AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),
-        AgentSpec(type=AgentType.REVIEW, cwd="/tmp", depends_on=["test"]),
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.CODE, cwd="/tmp"),
+            AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["code"]),
+            AgentSpec(type=AgentType.REVIEW, cwd="/tmp", depends_on=["test"]),
+        ]
+    )
     validate_plan(plan)  # A→B→C is not a cycle
 
 
@@ -258,10 +266,12 @@ def test_validate_plan_empty_config_repos_skips_check() -> None:
 
 def test_validate_plan_multiple_errors_collected() -> None:
     """cwd missing + unknown dep → both errors in one raise."""
-    plan = make_plan(agents=[
-        AgentSpec(type=AgentType.CODE),  # missing cwd
-        AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["review"]),  # review not in plan
-    ])
+    plan = make_plan(
+        agents=[
+            AgentSpec(type=AgentType.CODE),  # missing cwd
+            AgentSpec(type=AgentType.TEST, cwd="/tmp", depends_on=["review"]),  # review not in plan
+        ]
+    )
     with pytest.raises(PlanValidationError) as exc_info:
         validate_plan(plan)
     assert len(exc_info.value.errors) == 2
@@ -272,8 +282,13 @@ def test_validate_plan_multiple_errors_collected() -> None:
 
 def result_msg() -> ResultMessage:
     return ResultMessage(
-        subtype="result", duration_ms=50, duration_api_ms=40,
-        is_error=False, num_turns=1, session_id="sess-1", total_cost_usd=0.001,
+        subtype="result",
+        duration_ms=50,
+        duration_api_ms=40,
+        is_error=False,
+        num_turns=1,
+        session_id="sess-1",
+        total_cost_usd=0.001,
     )
 
 

@@ -15,7 +15,7 @@ from claude_dispatch.agent import Agent
 from claude_dispatch.job import Job
 
 
-class LogsScreen(Screen):
+class LogsScreen(Screen[None]):
     """Full-screen log view for one agent. Press Esc to go back."""
 
     BINDINGS = [
@@ -117,7 +117,7 @@ class LogsScreen(Screen):
     # ── actions ───────────────────────────────────────────────────
 
     def action_dispatcher(self) -> None:
-        self.app.open_dispatcher_conversation()
+        self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

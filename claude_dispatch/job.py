@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import DB_FILE, Config
@@ -123,7 +124,7 @@ class Job:
             logger.exception("db get_session failed for agent %s", agent.agent_id)
             return None
 
-    async def _fire(self, hook_name: str, payload: dict) -> None:
+    async def _fire(self, hook_name: str, payload: dict[str, Any]) -> None:
         """Fire a lifecycle hook; never raises."""
         await fire(hook_name, payload, hooks_dir=self.hooks_dir)
 
@@ -161,7 +162,7 @@ class Job:
             ),
         )
 
-    def _agent_summaries(self) -> list[dict]:
+    def _agent_summaries(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": a.spec.type.value,
@@ -260,15 +261,25 @@ class Job:
         agent.log_path = str(log_path)
 
         cmd = [
-            sys.executable, "-m", "claude_dispatch.worker",
-            "--job-id", self.job_id,
-            "--agent-type", agent.spec.type.value,
-            "--agent-id", agent.agent_id,
-            "--description", self.description,
-            "--instructions", self.instructions,
-            "--prompt", prompt,
-            "--log-path", str(log_path),
-            "--db-path", str(DB_FILE),
+            sys.executable,
+            "-m",
+            "claude_dispatch.worker",
+            "--job-id",
+            self.job_id,
+            "--agent-type",
+            agent.spec.type.value,
+            "--agent-id",
+            agent.agent_id,
+            "--description",
+            self.description,
+            "--instructions",
+            self.instructions,
+            "--prompt",
+            prompt,
+            "--log-path",
+            str(log_path),
+            "--db-path",
+            str(DB_FILE),
         ]
         if system_prompt:
             cmd += ["--system-prompt", system_prompt]
@@ -409,9 +420,7 @@ class Job:
             exc: Exception | None = None
             async with sem:
                 try:
-                    await self._spawn_worker(
-                        agent, prompt, EXECUTION_SYSTEM_PROMPT, resume_id
-                    )
+                    await self._spawn_worker(agent, prompt, EXECUTION_SYSTEM_PROMPT, resume_id)
                 except Exception as e:
                     logger.exception("agent %s failed", agent.agent_id)
                     exc = e
@@ -501,9 +510,8 @@ class Job:
             if target.log_path is not None:
                 # Subprocess worker — queue via DB; worker polls between turns
                 from claude_dispatch.db import enqueue_message
-                asyncio.create_task(
-                    enqueue_message(self.job_id, target.spec.type.value, message)
-                )
+
+                asyncio.create_task(enqueue_message(self.job_id, target.spec.type.value, message))
             else:
                 # In-process coroutine (e.g. dispatcher) — direct inbox injection
                 target.send_message(message)

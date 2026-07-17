@@ -178,3 +178,53 @@ async def test_plan_phase_passes_description_in_prompt(tmp_path: Path) -> None:
 
     assert "Refactor the auth module" in captured_prompts[0]
     assert str(tmp_path / "job-plan.yaml") in captured_prompts[0]
+
+
+# ── PR guardrails ──────────────────────────────────────────────────────────────
+
+
+def test_execution_system_prompt_contains_pr_guardrails() -> None:
+    """EXECUTION_SYSTEM_PROMPT must include the PR guardrails block."""
+    from claude_dispatch.prompts import EXECUTION_SYSTEM_PROMPT
+
+    forbidden = [
+        "--draft",
+        "--add-reviewer",
+        "--remove-reviewer",
+        "gh pr merge",
+        "gh pr close",
+        "--force",
+    ]
+    for marker in forbidden:
+        assert marker in EXECUTION_SYSTEM_PROMPT, (
+            f"PR guardrail missing from EXECUTION_SYSTEM_PROMPT: {marker!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_execute_phase_passes_execution_system_prompt(tmp_path: Path) -> None:
+    """Execution agents receive EXECUTION_SYSTEM_PROMPT (with guardrails)."""
+    import yaml as _yaml
+
+    from claude_dispatch.prompts import EXECUTION_SYSTEM_PROMPT
+
+    plan = {
+        "summary": "test",
+        "agents": [{"type": "code", "cwd": str(tmp_path)}],
+    }
+    (tmp_path / "job-plan.yaml").write_text(_yaml.dump(plan))
+
+    job = make_job()
+    job._workdir = tmp_path
+    job._use_workers = False
+    captured_options = []
+
+    async def fake_query(prompt, options):
+        captured_options.append(options)
+        yield _result_msg()
+
+    with patch("claude_dispatch.agent.query", fake_query):
+        await job._run_execute_phase()
+
+    assert len(captured_options) == 1
+    assert captured_options[0].system_prompt == EXECUTION_SYSTEM_PROMPT

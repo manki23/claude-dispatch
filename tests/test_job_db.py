@@ -224,7 +224,11 @@ async def test_plan_phase_passes_resume_id_from_db(tmp_path: Path) -> None:
     with (
         patch("claude_dispatch.agent.query", fake_query),
         patch("claude_dispatch.job.upsert_session", new_callable=AsyncMock),
-        patch("claude_dispatch.job.get_session", new_callable=AsyncMock, return_value="old-plan-sess"),
+        patch(
+            "claude_dispatch.job.get_session",
+            new_callable=AsyncMock,
+            return_value="old-plan-sess",
+        ),
     ):
         await job._run_plan_phase()
 
@@ -236,10 +240,13 @@ async def test_plan_phase_passes_resume_id_from_db(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_execute_phase_upserts_all_agents(tmp_path: Path) -> None:
-    plan = {"summary": "s", "agents": [
-        {"type": "code", "cwd": str(tmp_path)},
-        {"type": "test", "cwd": str(tmp_path), "depends_on": ["code"]},
-    ]}
+    plan = {
+        "summary": "s",
+        "agents": [
+            {"type": "code", "cwd": str(tmp_path)},
+            {"type": "test", "cwd": str(tmp_path), "depends_on": ["code"]},
+        ],
+    }
     (tmp_path / "job-plan.yaml").write_text(yaml.dump(plan))
 
     job = make_job()
