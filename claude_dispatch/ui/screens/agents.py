@@ -31,12 +31,14 @@ class AgentsScreen(Screen[None]):
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
         Binding("space", "toggle_select", "Select", show=True),
+        Binding("shift+space", "range_select", "Range select", show=False),
     ]
 
     def __init__(self, job: Job) -> None:
         super().__init__()
         self._job = job
         self._selected: set[str] = set()
+        self._anchor_row: int | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -105,11 +107,27 @@ class AgentsScreen(Screen[None]):
         agent = self._selected_agent()
         if not agent:
             return
+        table = self.query_one("#agents-table", DataTable)
         agent_id = agent.agent_id
         if agent_id in self._selected:
             self._selected.discard(agent_id)
+            self._anchor_row = None
         else:
             self._selected.add(agent_id)
+            self._anchor_row = table.cursor_row
+        self._refresh_table()
+
+    def action_range_select(self) -> None:
+        """Select all agents from the anchor row to the current cursor row (inclusive)."""
+        if not self._job.agents:
+            return
+        table = self.query_one("#agents-table", DataTable)
+        current_row = table.cursor_row
+        anchor = self._anchor_row if self._anchor_row is not None else current_row
+        lo, hi = min(anchor, current_row), max(anchor, current_row)
+        for idx in range(lo, min(hi + 1, len(self._job.agents))):
+            self._selected.add(self._job.agents[idx].agent_id)
+        self._anchor_row = None
         self._refresh_table()
 
     def action_view_logs(self) -> None:
