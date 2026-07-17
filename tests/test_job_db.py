@@ -70,6 +70,7 @@ async def test_db_upsert_persists_session(tmp_path: Path, db: Path) -> None:
         agent_type="code",
         session_id="sess-persisted",
         description="test task",
+        instructions="",
         status="done",
         cost_usd=0.007,
     )

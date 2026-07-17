@@ -54,8 +54,9 @@ class JobStatus(str, Enum):
 class Job:
     """Runtime state of a Job (one per human task)."""
 
-    description: str
+    description: str  # short display name shown in the jobs table
     config: Config
+    instructions: str = ""  # full task prompt sent to agents; falls back to description if empty
     job_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     phase: JobPhase = field(default=JobPhase.PLAN)
     status: JobStatus = field(default=JobStatus.RUNNING)
@@ -66,6 +67,11 @@ class Job:
     hooks_dir: Path | None = None  # override hooks directory (useful in tests)
     on_agent_ready: Callable[[Agent], None] | None = field(default=None, repr=False)
     _workdir: Path | None = field(default=None, init=False, repr=False)
+
+    @property
+    def task_prompt(self) -> str:
+        """Full task instructions, falling back to description if instructions not set."""
+        return self.instructions or self.description
 
     @property
     def workdir(self) -> Path:
@@ -96,6 +102,7 @@ class Job:
                 agent_type=agent.spec.type.value,
                 session_id=agent.session_id,
                 description=self.description,
+                instructions=self.instructions,
                 status=agent.status.value,
                 cost_usd=agent.cost_usd,
             )
@@ -184,7 +191,7 @@ class Job:
 
         resume_id = await self._db_resume_id(plan_agent)
         prompt = build_plan_prompt(
-            description=self.description,
+            description=self.task_prompt,
             plan_path=str(self.plan_path),
         )
 
@@ -323,7 +330,7 @@ class Job:
 
             resume_id = await self._db_resume_id(agent)
             prompt = build_execution_prompt(
-                description=self.description,
+                description=self.task_prompt,
                 agent_type=agent.spec.type.value,
                 plan_path=str(self.plan_path),
             )
