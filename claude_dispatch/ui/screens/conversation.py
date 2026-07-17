@@ -48,29 +48,27 @@ class ChatInput(TextArea):
             event.stop()
             self.action_insert_newline()
 
-    async def on_paste(self, event: Paste) -> None:
-        """Intercept paste: if multi-line, show preview placeholder."""
-        event.stop()
+    async def _on_paste(self, event: Paste) -> None:
+        """Override TextArea's internal paste handler to intercept multi-line pastes.
+
+        For single-line text: delegate to TextArea normally.
+        For multi-line: prevent default insert, store full text, show compact preview.
+        """
         global _paste_counter
         text = event.text
         lines = text.splitlines()
         if len(lines) <= 1:
-            # Single line paste — insert normally.
             self._paste_buffer = None
-            await self._insert_text_at_cursor(text)
+            await super()._on_paste(event)
             return
 
-        # Multi-line paste: store full text, show compact preview.
+        event.prevent_default()
         _paste_counter += 1
         self._paste_buffer = text
         extra = len(lines) - 1
         preview = f"[Pasted text #{_paste_counter} +{extra} lines]"
         self.clear()
-        await self._insert_text_at_cursor(preview)
-
-    async def _insert_text_at_cursor(self, text: str) -> None:
-        """Insert text at the current cursor position."""
-        self.insert(text)
+        self.insert(preview)
 
     def action_submit_message(self) -> None:
         """Emit Submitted with the full text (paste buffer or typed text)."""
@@ -106,6 +104,8 @@ class ConversationScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
+        Binding("ctrl+2", "goto_job", "Job", show=False, priority=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
 
@@ -125,12 +125,9 @@ class ConversationScreen(Screen[None]):
         self._awaiting_reply: bool = False
 
     def compose(self) -> ComposeResult:
-        agent_type = self._agent.spec.type.value
-        job_desc = self._job.description
-
         with Vertical():
+            yield Label("", id="breadcrumb")
             yield Label(
-                f"[bold]{job_desc}[/bold] › [cyan]{agent_type}[/cyan]  "
                 f"[dim]turns:[/dim] {len(self._thread.turns)}",
                 id="conv-header",
             )
@@ -152,6 +149,15 @@ class ConversationScreen(Screen[None]):
     """
 
     def on_mount(self) -> None:
+        if self._job.job_id == "dispatcher":
+            crumb = "[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  [bold]dispatcher[/bold]"
+        else:
+            crumb = (
+                f"[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  "
+                f"[dim]<ctrl+2>[/dim] [dim]{self._job.description[:35]}[/dim]  ›  "
+                f"[bold]{self._agent.spec.type.value}[/bold]"
+            )
+        self.query_one("#breadcrumb", Label).update(crumb)
         log = self.query_one("#conv-log", RichLog)
 
         # Render existing turns.
@@ -272,12 +278,20 @@ class ConversationScreen(Screen[None]):
         log.write(_format_turn(turn))
         if at_bottom:
             log.scroll_end(animate=False)
+        self.query_one("#conv-header", Label).update(f"[dim]turns:[/dim] {len(self._thread.turns)}")
 
     def _set_activity(self, text: str) -> None:
         """Update the slim activity bar above the input."""
         self.query_one("#conv-activity", Label).update(text)
 
     # ── actions ────────────────────────────────────────────────────
+
+    def action_goto_root(self) -> None:
+        self.app.pop_to_main()  # type: ignore[attr-defined]
+
+    def action_goto_job(self) -> None:
+        if self._job.job_id != "dispatcher":
+            self.app.pop_to_agents()  # type: ignore[attr-defined]
 
     def action_dispatcher(self) -> None:
         """Open dispatcher from any conversation (unless already in dispatcher)."""
