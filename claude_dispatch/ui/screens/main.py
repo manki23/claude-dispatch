@@ -64,6 +64,7 @@ class MainScreen(Screen[None]):
         Binding("r", "resume_job", "Resume", show=True),
         Binding("d", "dispatcher", "Chat w/ dispatcher", show=True),
         Binding("c", "show_costs", "Costs", show=True),
+        Binding("o", "open_config", "Config", show=True),
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("space", "toggle_select", "Select", show=True),
@@ -232,8 +233,9 @@ class MainScreen(Screen[None]):
             self.app.push_screen(AgentsScreen(job=job))
 
     def action_kill_job(self) -> None:
+        selected_job = self._selected_job()
         targets = [j for j in self.jobs if j.job_id in self._selected] or (
-            [self._selected_job()] if self._selected_job() else []
+            [selected_job] if selected_job is not None else []
         )
         if not targets:
             self.notify("No job selected", severity="warning")
@@ -430,6 +432,11 @@ class MainScreen(Screen[None]):
         from claude_dispatch.ui.modals.help import HelpModal
 
         self.app.push_screen(HelpModal())
+
+    def action_open_config(self) -> None:
+        from claude_dispatch.ui.screens.config import ConfigScreen
+
+        self.app.push_screen(ConfigScreen(config=self.app.config))  # type: ignore[attr-defined]
 
     def action_quit(self) -> None:
         self.app.exit()
