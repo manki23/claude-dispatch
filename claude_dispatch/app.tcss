@@ -38,27 +38,6 @@ Screen {
     border-left: solid $primary-darken-2;
 }
 
-/* ── Header bar (legacy) ──────────────────────────────────────────── */
-#header-bar {
-    height: 1;
-    background: $primary;
-    color: $text;
-    padding: 0 1;
-    dock: top;
-    layout: horizontal;
-}
-
-#header-title {
-    width: 1fr;
-    color: $text;
-    text-style: bold;
-}
-
-#header-stats {
-    color: $text-muted;
-    text-align: right;
-}
-
 /* ── Breadcrumb ──────────────────────────────────────────────────── */
 #breadcrumb {
     height: 1;
@@ -85,12 +64,6 @@ DataTable > .datatable--cursor {
 }
 
 /* ── Log view ────────────────────────────────────────────────────── */
-#log-container {
-    height: 1fr;
-    border: solid $primary-darken-2;
-    padding: 0 1;
-}
-
 RichLog {
     background: $surface;
     scrollbar-gutter: stable;

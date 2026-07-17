@@ -8,6 +8,13 @@ from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Label, RichLog
 
+from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
+
+_KEY_HINTS = (
+    f"  {key_hint('esc')}  Back          {key_hint('tab')}  Switch view\n"
+    f"  {key_hint('r')}  Refresh        {key_hint('d')}  Chat"
+)
+
 
 def _render_cost_chart(daily: list[dict]) -> str:
     if not daily:
@@ -31,6 +38,8 @@ class StatsScreen(Screen[None]):
         Binding("escape", "go_back", "Back", show=True),
         Binding("tab", "next_view", "Switch", show=True),
         Binding("r", "refresh", "Refresh", show=True),
+        Binding("d", "dispatcher", "Chat", show=True),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
     ]
 
     def __init__(self) -> None:
@@ -38,6 +47,7 @@ class StatsScreen(Screen[None]):
         self._view: str = "agents"
 
     def compose(self) -> ComposeResult:
+        yield DispatchHeader(_KEY_HINTS)
         yield Label("", id="breadcrumb")
         yield Label("", id="stats-status")
 
@@ -56,7 +66,9 @@ class StatsScreen(Screen[None]):
             "[dim]DISPATCHER[/dim]  \u203a  [bold]stats[/bold]"
         )
         self.query_one("#view-jobs", Vertical).display = False
-        self.query_one("#stats-status", Label).update("[dim]view:[/dim] agents")
+        self.query_one("#stats-status", Label).update(
+            "[dim]view:[/dim] agents  [dim]loading…[/dim]"
+        )
         self.run_worker(self._load_data())
 
     async def _load_data(self) -> None:
@@ -66,10 +78,18 @@ class StatsScreen(Screen[None]):
             get_top_expensive_jobs,
         )
 
-        agent_stats = await get_agent_type_stats()
-        daily = await get_daily_cost_series(30)
-        top_jobs = await get_top_expensive_jobs(10)
+        try:
+            agent_stats = await get_agent_type_stats()
+            daily = await get_daily_cost_series(30)
+            top_jobs = await get_top_expensive_jobs(10)
+        except Exception as exc:
+            self.call_from_thread(self._show_error, f"DB error: {exc}")
+            return
         self.call_from_thread(self._populate, agent_stats, daily, top_jobs)
+
+    def _show_error(self, msg: str) -> None:
+        self.query_one("#stats-status", Label).update(f"[red]{msg}[/red]")
+        self.notify(msg, severity="error")
 
     def _populate(
         self,
@@ -128,6 +148,9 @@ class StatsScreen(Screen[None]):
         chart.clear()
         chart.write(_render_cost_chart(daily))
 
+        view_label = "agents" if self._view == "agents" else "jobs"
+        self.query_one("#stats-status", Label).update(f"[dim]view:[/dim] {view_label}")
+
     def action_next_view(self) -> None:
         if self._view == "agents":
             self._view = "jobs"
@@ -140,13 +163,19 @@ class StatsScreen(Screen[None]):
         self.query_one("#stats-status", Label).update(f"[dim]view:[/dim] {self._view}")
 
     def action_refresh(self) -> None:
-        table = self.query_one("#agents-table", DataTable)
-        table.clear(columns=True)
-        jtable = self.query_one("#jobs-table", DataTable)
-        jtable.clear(columns=True)
-        chart = self.query_one("#cost-chart", RichLog)
-        chart.clear()
+        self.query_one("#agents-table", DataTable).clear(columns=True)
+        self.query_one("#jobs-table", DataTable).clear(columns=True)
+        self.query_one("#cost-chart", RichLog).clear()
+        self.query_one("#stats-status", Label).update(
+            f"[dim]view:[/dim] {self._view}  [dim]loading…[/dim]"
+        )
         self.run_worker(self._load_data())
+
+    def action_dispatcher(self) -> None:
+        self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]
+
+    def action_goto_root(self) -> None:
+        self.app.pop_to_main()  # type: ignore[attr-defined]
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

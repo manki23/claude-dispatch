@@ -15,6 +15,25 @@ from textual.widgets import Footer, Label, RichLog
 
 from claude_dispatch.agent import Agent
 from claude_dispatch.job import Job
+from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
+
+_KEY_HINTS = (
+    f"  {key_hint('esc')}  Back          {key_hint('d')}  Chat\n"
+    f"  {key_hint('a')}  Autoscroll     {key_hint('w')}  Wrap\n"
+    f"  {key_hint('f')}  Fullscreen     {key_hint('end')}  Scroll end\n"
+    f"  {key_hint('ctrl+y')}  Copy log"
+)
+
+
+def _status_markup(status: str) -> str:
+    icons = {
+        "running": "[green]● running[/green]",
+        "done": "[dim green]✓ done[/dim green]",
+        "waiting": "[dim]○ waiting[/dim]",
+        "failed": "[red]✗ failed[/red]",
+        "killed": "[dim red]⊘ killed[/dim red]",
+    }
+    return icons.get(status, f"[dim]{status}[/dim]")
 
 
 class LogsScreen(Screen[None]):
@@ -22,8 +41,8 @@ class LogsScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False),
-        Binding("ctrl+2", "goto_job", "Job", show=False),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
+        Binding("ctrl+2", "goto_job", "Job", show=False, priority=True),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("a", "toggle_autoscroll", "Autoscroll", show=True),
         Binding("w", "toggle_wrap", "Wrap", show=True),
@@ -40,10 +59,12 @@ class LogsScreen(Screen[None]):
         self._prev_on_log: Callable[[str], None] | None = None
         self._autoscroll: bool = True
         self._fullscreen: bool = False
+        self._header: DispatchHeader | None = None
 
     def compose(self) -> ComposeResult:
         status = self._agent.status.value
-
+        self._header = DispatchHeader(_KEY_HINTS)
+        yield self._header
         with Vertical():
             yield Label("", id="breadcrumb")
             yield Label(
@@ -67,7 +88,10 @@ class LogsScreen(Screen[None]):
         # Render existing lines — from log file (subprocess) or in-memory list
         if self._agent.log_path:
             lp = Path(self._agent.log_path)
-            initial_lines = lp.read_text().splitlines() if lp.exists() else []
+            try:
+                initial_lines = lp.read_text().splitlines() if lp.exists() else []
+            except OSError:
+                initial_lines = []
         else:
             initial_lines = self._agent.log_lines
         for line in initial_lines:
@@ -117,7 +141,10 @@ class LogsScreen(Screen[None]):
         if self._agent.log_path:
             lp = Path(self._agent.log_path)
             if lp.exists():
-                all_lines = lp.read_text().splitlines()
+                try:
+                    all_lines = lp.read_text().splitlines()
+                except OSError:
+                    return
                 new_lines = all_lines[self._rendered_count :]
                 for line in new_lines:
                     self._append_line(line)
@@ -146,6 +173,8 @@ class LogsScreen(Screen[None]):
         self.query_one("#breadcrumb", Label).display = show
         self.query_one("#log-header", Label).display = show
         self.query_one(Footer).display = show
+        if self._header is not None:
+            self._header.display = show
 
     def action_copy_log(self) -> None:
         """Copy all log lines to the system clipboard."""
@@ -153,7 +182,10 @@ class LogsScreen(Screen[None]):
         if self._agent.log_path:
             lp = Path(self._agent.log_path)
             if lp.exists():
-                lines = lp.read_text().splitlines()
+                try:
+                    lines = lp.read_text().splitlines()
+                except OSError:
+                    pass
         text = "\n".join(lines)
         system = platform.system()
         try:
@@ -166,8 +198,10 @@ class LogsScreen(Screen[None]):
             elif system == "Windows":
                 subprocess.run(["clip"], input=text.encode(), check=True)
             self.notify("Log copied to clipboard", timeout=2)
-        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-            self.notify(f"Copy failed: {exc}", severity="error", timeout=3)
+        except FileNotFoundError:
+            self.notify("Clipboard tool not found (pbcopy/xclip/clip)", severity="error")
+        except subprocess.CalledProcessError as exc:
+            self.notify(f"Copy failed: {exc}", severity="error")
 
     def action_goto_root(self) -> None:
         self.app.pop_to_main()  # type: ignore[attr-defined]
@@ -183,14 +217,3 @@ class LogsScreen(Screen[None]):
 
     def action_scroll_end(self) -> None:
         self.query_one("#log-view", RichLog).scroll_end(animate=False)
-
-
-def _status_markup(status: str) -> str:
-    icons = {
-        "running": "[green]● running[/green]",
-        "done": "[dim green]✓ done[/dim green]",
-        "waiting": "[dim]○ waiting[/dim]",
-        "failed": "[red]✗ failed[/red]",
-        "killed": "[dim red]⊘ killed[/dim red]",
-    }
-    return icons.get(status, status)

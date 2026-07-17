@@ -6,34 +6,18 @@ import time
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
 from textual.screen import Screen
-from textual.widgets import DataTable, Label
+from textual.widgets import DataTable
 
 from claude_dispatch.job import Job, JobStatus
-
-# ASCII logo — pyfiglet "small" font output for "DISPATCHER".
-# Lines ending with \ get a trailing space before [/cyan] to avoid Rich
-# treating \[ as an escaped bracket and rendering "[/cyan]" as literal text.
-_LOGO = (
-    "[cyan] ___ ___ ___ ___  _ _____ ___ _  _ ___ ___ [/cyan]\n"
-    "[cyan]|   \\_ _/ __| _ \\/_\\_   _/ __| || | __| _ \\ [/cyan]\n"
-    "[cyan]| |) | |\\__ \\  _/ _ \\| || (__| __ | _||   /[/cyan]\n"
-    "[cyan]|___/___|___/_|/_/ \\_\\_| \\___|_||_|___|_|_\\ [/cyan]"
-)
-
-
-# Shortcut hints — two columns, one pair per row (k9s style)
-def _key(k: str) -> str:
-    return f"[dim]<[/dim][bold]{k}[/bold][dim]>[/dim]"
-
+from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
 
 _KEY_HINTS = (
-    f"  {_key('n')}  New job       {_key('d')}  Chat w/ dispatcher\n"
-    f"  {_key('m')}  Msg job       {_key('c')}  Cost\n"
-    f"  {_key('k')}  Kill job      {_key('?')}  Help\n"
-    f"  {_key('r')}  Resume        {_key('s')}  Stats\n"
-    f"  {_key('q')}  Quit          {_key('ctrl+p')}  Palette"
+    f"  {key_hint('n')}  New job       {key_hint('d')}  Chat w/ dispatcher\n"
+    f"  {key_hint('m')}  Msg job       {key_hint('c')}  Cost\n"
+    f"  {key_hint('k')}  Kill job      {key_hint('?')}  Help\n"
+    f"  {key_hint('r')}  Resume        {key_hint('s')}  Stats\n"
+    f"  {key_hint('q')}  Quit          {key_hint('ctrl+p')}  Palette"
 )
 
 _STATUS_ICONS: dict[str, str] = {
@@ -79,11 +63,7 @@ class MainScreen(Screen[None]):
         self._anchor_row: int | None = None
 
     def compose(self) -> ComposeResult:
-        # k9s-style header: one horizontal band split into 3 columns
-        with Horizontal(id="dispatch-header"):
-            yield Label("", id="header-context")  # left: version/repos/jobs/cost
-            yield Label(_KEY_HINTS, id="header-keys")  # middle: shortcuts in 2 cols
-            yield Label(_LOGO, id="header-logo")  # right: DISPATCHER logo
+        yield DispatchHeader(_KEY_HINTS)
         yield DataTable(id="jobs-table", cursor_type="row")
 
     def on_mount(self) -> None:
@@ -93,27 +73,6 @@ class MainScreen(Screen[None]):
         self.set_interval(1.0, self._refresh)
 
     def _refresh(self) -> None:
-        # Update header context (4 lines to match logo height)
-        running = sum(1 for j in self.jobs if j.status == JobStatus.RUNNING)
-        total_jobs = len(self.jobs)
-        total_cost = sum(j.cost_usd for j in self.jobs)
-        try:
-            cfg = self.app.config  # type: ignore[attr-defined]
-            n_repos = len(cfg.repos)
-        except AttributeError:
-            n_repos = 0
-        from claude_dispatch import __version__
-
-        run_color = "green" if running else "dim"
-        jobs_line = f"[{run_color}]{running}[/{run_color}] running / {total_jobs} total"
-        self.query_one("#header-context", Label).update(
-            f" [dim]Version:[/dim] {__version__}\n"
-            f" [dim]Repos:[/dim]   {n_repos}\n"
-            f" [dim]Jobs:[/dim]    {jobs_line}\n"
-            f" [dim]Cost:[/dim]    [bold]${total_cost:.4f}[/bold]"
-        )
-
-        # Update table
         table = self.query_one("#jobs-table", DataTable)
         cursor_row = table.cursor_row
         table.clear()
@@ -339,7 +298,11 @@ class MainScreen(Screen[None]):
         from claude_dispatch.db import list_jobs
         from claude_dispatch.ui.modals.resume import ResumeModal
 
-        past_jobs = await list_jobs()
+        try:
+            past_jobs = await list_jobs()
+        except Exception as exc:
+            self.notify(f"Could not load jobs from DB: {exc}", severity="error")
+            return
         if not past_jobs:
             self.notify("No past jobs found in DB", severity="warning")
             return

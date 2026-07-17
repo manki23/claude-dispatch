@@ -10,6 +10,13 @@ from textual.widgets import DataTable, Footer, Label
 
 from claude_dispatch.agent import Agent, AgentStatus
 from claude_dispatch.job import Job
+from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
+
+_KEY_HINTS = (
+    f"  {key_hint('esc')}  Back          {key_hint('d')}  Chat\n"
+    f"  {key_hint('m')}  Message        {key_hint('k')}  Kill agent\n"
+    f"  {key_hint('space')}  Select"
+)
 
 _STATUS_ICONS: dict[str, str] = {
     AgentStatus.RUNNING: "[green]● running[/green]",
@@ -25,7 +32,7 @@ class AgentsScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
@@ -40,6 +47,7 @@ class AgentsScreen(Screen[None]):
         self._anchor_row: int | None = None
 
     def compose(self) -> ComposeResult:
+        yield DispatchHeader(_KEY_HINTS)
         with Vertical():
             yield Label("", id="breadcrumb")
             yield Label(
@@ -140,6 +148,7 @@ class AgentsScreen(Screen[None]):
     def action_message_agent(self) -> None:
         agent = self._selected_agent()
         if not agent:
+            self.notify("No agent selected", severity="warning")
             return
         from claude_dispatch.ui.modals.prompt import PromptModal
 
@@ -150,12 +159,15 @@ class AgentsScreen(Screen[None]):
                 return
 
             async def _deliver() -> None:
-                delivered = await self._job.send_message(message, agent_type=agent_type)
-                if not delivered:
-                    self.notify(
-                        f"Could not deliver message to '{agent_type}'",
-                        severity="warning",
-                    )
+                try:
+                    delivered = await self._job.send_message(message, agent_type=agent_type)
+                    if not delivered:
+                        self.notify(
+                            f"Could not deliver message to '{agent_type}'",
+                            severity="warning",
+                        )
+                except Exception as exc:
+                    self.notify(f"Message delivery failed: {exc}", severity="error")
 
             self.app.run_worker(_deliver(), exclusive=False)
 
@@ -262,8 +274,11 @@ class AgentsScreen(Screen[None]):
     async def _delete_agent_from_history(self, job_id: str, agent_type: str) -> None:
         from claude_dispatch.db import delete_agent_session
 
-        await delete_agent_session(job_id, agent_type)
-        self.notify("Agent removed from view and history", severity="information")
+        try:
+            await delete_agent_session(job_id, agent_type)
+            self.notify("Agent removed from view and history", severity="information")
+        except Exception as exc:
+            self.notify(f"Failed to delete from history: {exc}", severity="error")
 
     def action_goto_root(self) -> None:
         self.app.pop_to_main()  # type: ignore[attr-defined]

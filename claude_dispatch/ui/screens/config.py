@@ -15,6 +15,14 @@ from textual.widgets import DataTable, Footer, Label, RichLog, TextArea
 
 from claude_dispatch import hooks as hooks_mod
 from claude_dispatch.config import CONFIG_FILE, HOOKS_DIR, Config
+from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
+
+_KEY_HINTS = (
+    f"  {key_hint('esc')}  Back          {key_hint('tab')}  Switch view\n"
+    f"  {key_hint('e')}  Edit           {key_hint('ctrl+s')}  Save\n"
+    f"  {key_hint('t')}  Test hook      {key_hint('x')}  chmod +x\n"
+    f"  {key_hint('ctrl+j')}  Jarvis test    {key_hint('d')}  Chat"
+)
 
 _KNOWN_HOOKS = [
     hooks_mod.PRE_JOB_START,
@@ -44,6 +52,8 @@ class ConfigScreen(Screen[None]):
         Binding("t", "test_hook", "Test hook", show=True),
         Binding("ctrl+j", "test_jarvis", "Jarvis test", show=True),
         Binding("x", "toggle_executable", "chmod +x", show=True),
+        Binding("d", "dispatcher", "Chat", show=True),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
     ]
 
     def __init__(self, config: Config) -> None:
@@ -57,6 +67,7 @@ class ConfigScreen(Screen[None]):
     # ── compose ────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
+        yield DispatchHeader(_KEY_HINTS)
         yield Label("", id="breadcrumb")
         yield Label("", id="config-status")
 
@@ -169,6 +180,12 @@ class ConfigScreen(Screen[None]):
         return None
 
     # ── actions ────────────────────────────────────────────────────
+
+    def action_dispatcher(self) -> None:
+        self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]
+
+    def action_goto_root(self) -> None:
+        self.app.pop_to_main()  # type: ignore[attr-defined]
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
@@ -338,7 +355,11 @@ class ConfigScreen(Screen[None]):
             vault_path = Path(vault_path_str).expanduser()
             from claude_dispatch.jarvis import fetch_prior_context
 
-            result = fetch_prior_context(description, vault_path)
+            try:
+                result = fetch_prior_context(description, vault_path)
+            except Exception as exc:
+                self.notify(f"Jarvis search failed: {exc}", severity="error")
+                return
             preview = self.query_one("#jarvis-preview", RichLog)
             preview.clear()
             preview.write(result or "No matches found.")
