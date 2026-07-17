@@ -52,13 +52,25 @@ agents:
 """
 
 
-def build_plan_prompt(description: str, plan_path: str) -> str:
-    """Construct the full prompt sent to the plan agent."""
-    return (
-        f"Task description:\n{description}\n\n"
+def build_plan_prompt(
+    description: str,
+    plan_path: str,
+    prior_context: str | None = None,
+) -> str:
+    """Construct the full prompt sent to the plan agent.
+
+    If *prior_context* is provided (e.g. from the Jarvis vault), it is
+    injected between the task description and the write instruction so the
+    plan agent knows what work has already been done.
+    """
+    parts = [f"Task description:\n{description}"]
+    if prior_context:
+        parts.append(prior_context)
+    parts.append(
         f"Write the execution plan to: {plan_path}\n\n"
         "Explore the relevant repositories with Read/Glob/Grep, then write the plan file."
     )
+    return "\n\n".join(parts)
 
 
 EXECUTION_SYSTEM_PROMPT = """\
@@ -90,8 +102,9 @@ If it is not (e.g. removing a reviewer, converting to draft), skip it unless exp
 
 def build_execution_prompt(description: str, agent_type: str, plan_path: str) -> str:
     """Construct the prompt sent to an execution agent."""
-    return (
-        f"Job description: {description}\n\n"
-        f"Your role: {agent_type}\n\n"
-        f"Read the plan at {plan_path} for full context, then execute your part of the task."
-    )
+    parts = [
+        f"Job description: {description}",
+        f"Your role: {agent_type}",
+        f"Read the plan at {plan_path} for full context, then execute your part of the task.",
+    ]
+    return "\n\n".join(parts)

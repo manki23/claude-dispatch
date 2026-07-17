@@ -74,3 +74,22 @@ hooks:
 ```
 
 See [examples/hooks/](../examples/hooks/README.md) for hook documentation.
+
+## jarvis
+
+Inject prior context from a [Jarvis](https://github.com/manki23/Jarvis) Obsidian vault
+into the plan agent's prompt before it starts planning.
+
+When a job description contains Jira-style ticket IDs (e.g. `MOPU-668`), dispatch
+searches the vault for matching note files (`**/{TICKET_ID}*.md`) and prepends a
+`## Prior context` block to the plan prompt. This prevents the plan agent from
+re-planning or duplicating work that is already in progress or done.
+
+```yaml
+jarvis:
+  enabled: true           # set false to disable entirely
+  vault_path: ~/Jarvis    # path to your Obsidian vault root
+```
+
+Notes are truncated at 2000 characters. Missing vault or no matching notes → silently
+skipped (never causes a job failure).

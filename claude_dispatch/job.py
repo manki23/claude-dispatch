@@ -27,6 +27,7 @@ from claude_dispatch.hooks import (
     post_job_done_payload,
     pre_job_start_payload,
 )
+from claude_dispatch.jarvis import fetch_prior_context
 from claude_dispatch.prompts import (
     EXECUTION_SYSTEM_PROMPT,
     PLAN_SYSTEM_PROMPT,
@@ -196,6 +197,7 @@ class Job:
         prompt = build_plan_prompt(
             description=self.task_prompt,
             plan_path=str(self.plan_path),
+            prior_context=self._fetch_prior_context(),
         )
 
         timeout = self.config.defaults.plan_timeout_s
@@ -331,6 +333,22 @@ class Job:
             return None
         path = Path(raw).expanduser()
         return str(path) if path.exists() else None
+
+    def _fetch_prior_context(self) -> str | None:
+        """Return a Jarvis vault context block for injection into the plan prompt.
+
+        Returns ``None`` when Jarvis is disabled, vault_path is unset,
+        no ticket IDs are found in the task, or any I/O error occurs.
+        Never raises — missing context must not abort a job.
+        """
+        if not self.config.jarvis.enabled or not self.config.jarvis.vault_path:
+            return None
+        vault = Path(self.config.jarvis.vault_path).expanduser()
+        try:
+            return fetch_prior_context(self.task_prompt, vault)
+        except Exception:
+            logger.exception("jarvis context fetch failed — continuing without prior context")
+            return None
 
     def _make_on_cost(self, agent: Agent, guard: CostGuard) -> Callable[[float], None]:
         """Return an on_cost callback that updates job total then enforces limits."""
