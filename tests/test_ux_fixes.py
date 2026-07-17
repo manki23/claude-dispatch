@@ -165,6 +165,7 @@ async def test_logs_screen_header_refreshes_after_agent_done() -> None:
         screen._refresh_header()  # type: ignore
 
         from textual.widgets import Label
+
         header = screen.query_one("#log-header", Label)
         # _refresh_header ran without error — label exists and has content
         assert header is not None
@@ -201,6 +202,7 @@ async def test_agents_screen_header_refreshes() -> None:
         screen._refresh_header()  # type: ignore
 
         from textual.widgets import Label
+
         header = screen.query_one("#agents-header", Label)
         assert header is not None
 

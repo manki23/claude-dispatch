@@ -158,9 +158,7 @@ async def test_plan_phase_killed_when_agent_exceeds_limit(tmp_path: Path) -> Non
     job._workdir = tmp_path
 
     async def fake_query(prompt, options):
-        (tmp_path / "job-plan.yaml").write_text(
-            yaml.dump({"summary": "s", "agents": []})
-        )
+        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "s", "agents": []}))
         yield result_msg(cost=0.01)  # 0.01 > 0.001 → breaches limit
 
     with patch("claude_dispatch.agent.query", fake_query):
@@ -176,9 +174,7 @@ async def test_plan_phase_succeeds_under_limit(tmp_path: Path) -> None:
     job._workdir = tmp_path
 
     async def fake_query(prompt, options):
-        (tmp_path / "job-plan.yaml").write_text(
-            yaml.dump({"summary": "s", "agents": []})
-        )
+        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "s", "agents": []}))
         yield result_msg(cost=0.005)
 
     with patch("claude_dispatch.agent.query", fake_query):

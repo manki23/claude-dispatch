@@ -123,9 +123,7 @@ class ConversationScreen(Screen):
             system_prompt = self._system_prompt_factory()
             resume_id = self._agent.session_id
             self.app.run_worker(
-                self._agent.run(
-                    message, resume_session_id=resume_id, system_prompt=system_prompt
-                ),
+                self._agent.run(message, resume_session_id=resume_id, system_prompt=system_prompt),
                 exclusive=False,
             )
         else:

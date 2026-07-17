@@ -19,6 +19,7 @@ async def test_app_starts(mock_app):
     """App starts without errors and renders the jobs table."""
     async with mock_app.run_test():
         from textual.widgets import DataTable
+
         table = mock_app.screen.query_one("#jobs-table", DataTable)
         assert table.row_count == len(make_mock_jobs())
 
@@ -27,6 +28,7 @@ async def test_jobs_table_has_expected_columns(mock_app):
     """Jobs table renders all expected columns."""
     async with mock_app.run_test():
         from textual.widgets import DataTable
+
         table = mock_app.screen.query_one("#jobs-table", DataTable)
         col_labels = [str(col.label) for col in table.columns.values()]
         assert "NAME" in col_labels
@@ -41,6 +43,7 @@ async def test_drill_into_job(mock_app):
         from textual.widgets import DataTable
 
         from claude_dispatch.ui.screens.agents import AgentsScreen
+
         await pilot.pause()
         mock_app.screen.query_one("#jobs-table", DataTable).focus()
         await pilot.press("enter")
@@ -55,6 +58,7 @@ async def test_escape_from_agents_returns_to_main(mock_app):
 
         from claude_dispatch.ui.screens.agents import AgentsScreen
         from claude_dispatch.ui.screens.main import MainScreen
+
         await pilot.pause()
         mock_app.screen.query_one("#jobs-table", DataTable).focus()
         await pilot.press("enter")
@@ -70,6 +74,7 @@ async def test_help_modal_opens_and_closes(mock_app):
     async with mock_app.run_test() as pilot:
         from claude_dispatch.ui.modals.help import HelpModal
         from claude_dispatch.ui.screens.main import MainScreen
+
         await pilot.press("question_mark")
         await pilot.pause()
         assert isinstance(mock_app.screen, HelpModal)
@@ -83,6 +88,7 @@ async def test_cost_modal_opens_and_closes(mock_app):
     async with mock_app.run_test() as pilot:
         from claude_dispatch.ui.modals.cost import CostModal
         from claude_dispatch.ui.screens.main import MainScreen
+
         await pilot.press("c")
         await pilot.pause()
         assert isinstance(mock_app.screen, CostModal)
@@ -95,6 +101,7 @@ async def test_kill_job(mock_app):
     """k on a running job marks it as killed."""
     async with mock_app.run_test() as pilot:
         from claude_dispatch.job import JobStatus
+
         job = mock_app.jobs[0]
         assert job.status == JobStatus.RUNNING
         await pilot.press("k")

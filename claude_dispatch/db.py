@@ -148,9 +148,7 @@ async def dequeue_messages(
         if rows:
             ids = [r[0] for r in rows]
             placeholders = ",".join("?" * len(ids))
-            await db.execute(
-                f"UPDATE messages SET consumed=1 WHERE id IN ({placeholders})", ids
-            )
+            await db.execute(f"UPDATE messages SET consumed=1 WHERE id IN ({placeholders})", ids)
             await db.commit()
         return [r[1] for r in rows]
 
