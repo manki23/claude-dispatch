@@ -102,8 +102,9 @@ If it is not (e.g. removing a reviewer, converting to draft), skip it unless exp
 
 def build_execution_prompt(description: str, agent_type: str, plan_path: str) -> str:
     """Construct the prompt sent to an execution agent."""
-    return (
-        f"Job description: {description}\n\n"
-        f"Your role: {agent_type}\n\n"
-        f"Read the plan at {plan_path} for full context, then execute your part of the task."
-    )
+    parts = [
+        f"Job description: {description}",
+        f"Your role: {agent_type}",
+        f"Read the plan at {plan_path} for full context, then execute your part of the task.",
+    ]
+    return "\n\n".join(parts)

@@ -27,6 +27,7 @@ from claude_dispatch.hooks import (
     post_job_done_payload,
     pre_job_start_payload,
 )
+from claude_dispatch.jarvis import fetch_prior_context
 from claude_dispatch.prompts import (
     EXECUTION_SYSTEM_PROMPT,
     PLAN_SYSTEM_PROMPT,
@@ -344,8 +345,6 @@ class Job:
             return None
         vault = Path(self.config.jarvis.vault_path).expanduser()
         try:
-            from claude_dispatch.jarvis import fetch_prior_context
-
             return fetch_prior_context(self.task_prompt, vault)
         except Exception:
             logger.exception("jarvis context fetch failed — continuing without prior context")

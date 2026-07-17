@@ -10,6 +10,7 @@ import yaml
 from claude_code_sdk.types import ResultMessage
 
 from claude_dispatch.jarvis import fetch_prior_context
+from claude_dispatch.job import Job
 
 
 def _result_msg(session_id: str = "sess-1") -> ResultMessage:
@@ -142,9 +143,8 @@ def test_unreadable_note_skipped(tmp_path: Path) -> None:
 # ── integration: Job._fetch_prior_context ─────────────────────────────────────
 
 
-def _make_job(tmp_path: Path, vault_path: str = "", enabled: bool = True):
+def _make_job(tmp_path: Path, vault_path: str = "", enabled: bool = True) -> Job:
     from claude_dispatch.config import Config, JarvisConfig
-    from claude_dispatch.job import Job
 
     cfg = Config()
     cfg.jarvis = JarvisConfig(enabled=enabled, vault_path=vault_path)
@@ -188,73 +188,52 @@ def test_fetch_prior_context_never_raises(tmp_path: Path) -> None:
     assert result is None
 
 
-# ── integration: context appears in plan prompt ───────────────────────────────
+# ── integration: context appears in plan prompt ──────────────────────────────────────────────
+
+
+async def _run_plan_and_capture(tmp_path: Path, enabled: bool) -> str:
+    """Helper: run plan phase with a vault note and return the captured prompt."""
+    from claude_dispatch.config import Config, JarvisConfig
+    from claude_dispatch.job import Job
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "MOPU-668 - PR.md").write_text("PR #18294 IN REVIEW.")
+
+    cfg = Config()
+    cfg.jarvis = JarvisConfig(enabled=enabled, vault_path=str(vault))
+
+    job = Job(
+        description="Fix MOPU-668 regression",
+        config=cfg,
+        db_enabled=False,
+        _use_workers=False,
+    )
+    job._workdir = tmp_path
+    captured: list[str] = []
+
+    async def fake_query(prompt, options):  # type: ignore[no-untyped-def]
+        captured.append(prompt)
+        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "test", "agents": []}))
+        yield _result_msg()
+
+    with patch("claude_dispatch.agent.query", fake_query):
+        await job._run_plan_phase()
+
+    return captured[0]
 
 
 @pytest.mark.asyncio
 async def test_plan_prompt_includes_prior_context(tmp_path: Path) -> None:
     """When vault has a matching note, plan prompt includes the context block."""
-    from claude_dispatch.config import Config, JarvisConfig
-    from claude_dispatch.job import Job
-
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "MOPU-668 - PR.md").write_text("PR #18294 IN REVIEW.")
-
-    cfg = Config()
-    cfg.jarvis = JarvisConfig(enabled=True, vault_path=str(vault))
-
-    job = Job(
-        description="Fix MOPU-668 regression",
-        config=cfg,
-        db_enabled=False,
-        _use_workers=False,
-    )
-    job._workdir = tmp_path
-    captured_prompts: list[str] = []
-
-    async def fake_query(prompt, options):
-        captured_prompts.append(prompt)
-        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "test", "agents": []}))
-        yield _result_msg()
-
-    with patch("claude_dispatch.agent.query", fake_query):
-        await job._run_plan_phase()
-
-    assert len(captured_prompts) == 1
-    assert "## Prior context" in captured_prompts[0]
-    assert "PR #18294 IN REVIEW." in captured_prompts[0]
-    assert "MOPU-668" in captured_prompts[0]
+    prompt = await _run_plan_and_capture(tmp_path, enabled=True)
+    assert "## Prior context" in prompt
+    assert "PR #18294 IN REVIEW." in prompt
+    assert "MOPU-668" in prompt
 
 
 @pytest.mark.asyncio
 async def test_plan_prompt_no_context_when_disabled(tmp_path: Path) -> None:
-    """jarvis.enabled=false → no prior context block in plan prompt."""
-    from claude_dispatch.config import Config, JarvisConfig
-    from claude_dispatch.job import Job
-
-    vault = tmp_path / "vault"
-    vault.mkdir()
-    (vault / "MOPU-668 - PR.md").write_text("PR #18294 IN REVIEW.")
-
-    cfg = Config()
-    cfg.jarvis = JarvisConfig(enabled=False, vault_path=str(vault))
-
-    job = Job(
-        description="Fix MOPU-668 regression",
-        config=cfg,
-        db_enabled=False,
-        _use_workers=False,
-    )
-    job._workdir = tmp_path
-    captured_prompts: list[str] = []
-
-    async def fake_query(prompt, options):
-        captured_prompts.append(prompt)
-        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "test", "agents": []}))
-        yield _result_msg()
-
-    with patch("claude_dispatch.agent.query", fake_query):
-        await job._run_plan_phase()
-
-    assert "## Prior context" not in captured_prompts[0]
+    """jarvis.enabled=false -> no prior context block in plan prompt."""
+    prompt = await _run_plan_and_capture(tmp_path, enabled=False)
+    assert "## Prior context" not in prompt
