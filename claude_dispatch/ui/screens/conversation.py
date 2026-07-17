@@ -18,7 +18,6 @@ from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
 
 _KEY_HINTS = (
     f"  {key_hint('esc')}  Back          {key_hint('d')}  Chat w/ dispatcher\n"
-    f"  {key_hint('ctrl+1')}  Root          {key_hint('ctrl+2')}  Job\n"
     f"  {key_hint('end')}  Scroll to end"
 )
 
@@ -38,8 +37,6 @@ class ConversationScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
-        Binding("ctrl+2", "goto_job", "Job", show=False, priority=True),
         Binding("d", "dispatcher", "Chat w/ dispatcher", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
@@ -86,11 +83,11 @@ class ConversationScreen(Screen[None]):
 
     def on_mount(self) -> None:
         if self._job.job_id == "dispatcher":
-            crumb = "[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  [bold]dispatcher[/bold]"
+            crumb = "[dim]DISPATCHER[/dim]  ›  [bold]dispatcher[/bold]"
         else:
             crumb = (
-                f"[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  "
-                f"[dim]<ctrl+2>[/dim] [dim]{self._job.description[:35]}[/dim]  ›  "
+                f"[dim]DISPATCHER[/dim]  ›  "
+                f"[dim]{self._job.description[:35]}[/dim]  ›  "
                 f"[bold]{self._agent.spec.type.value}[/bold]"
             )
         self.query_one("#breadcrumb", Label).update(crumb)
@@ -229,13 +226,6 @@ class ConversationScreen(Screen[None]):
         self.query_one("#conv-activity", Label).update(text)
 
     # ── actions ────────────────────────────────────────────────────
-
-    def action_goto_root(self) -> None:
-        self.app.pop_to_main()  # type: ignore[attr-defined]
-
-    def action_goto_job(self) -> None:
-        if self._job.job_id != "dispatcher":
-            self.app.pop_to_agents()  # type: ignore[attr-defined]
 
     def action_dispatcher(self) -> None:
         """Open dispatcher from any conversation (unless already in dispatcher)."""

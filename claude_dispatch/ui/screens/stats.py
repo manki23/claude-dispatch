@@ -39,7 +39,7 @@ class StatsScreen(Screen[None]):
         Binding("tab", "next_view", "Switch", show=True),
         Binding("r", "refresh", "Refresh", show=True),
         Binding("d", "dispatcher", "Chat", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
+        Binding("1", "goto_root", "Dispatcher", show=False),
     ]
 
     def __init__(self) -> None:

@@ -31,8 +31,8 @@ class LogsScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
-        Binding("ctrl+2", "goto_job", "Job", show=False, priority=True),
+        Binding("1", "goto_root", "Dispatcher", show=False),
+        Binding("2", "goto_job", "Job", show=False),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("a", "toggle_autoscroll", "Autoscroll", show=True),
         Binding("w", "toggle_wrap", "Wrap", show=True),
@@ -68,8 +68,8 @@ class LogsScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#breadcrumb", Label).update(
-            f"[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  "
-            f"[dim]<ctrl+2>[/dim] [dim]{self._job.description[:35]}[/dim]  ›  "
+            f"[dim][1][/dim] [dim]DISPATCHER[/dim]  ›  "
+            f"[dim][2][/dim] [dim]{self._job.description[:35]}[/dim]  ›  "
             f"[bold]{self._agent.spec.type.value} logs[/bold]"
         )
         self.query_one("#log-view", RichLog).focus()
@@ -95,6 +95,7 @@ class LogsScreen(Screen[None]):
             if self._prev_on_log:
                 self._prev_on_log(line)
             self._append_line(line)
+            self._rendered_count += 1  # prevent _poll_new_lines from re-rendering this line
 
         self._agent.on_log = _live_write
 

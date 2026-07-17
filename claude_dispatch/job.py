@@ -491,14 +491,19 @@ class Job:
                 agent.cancel()
         self.status = JobStatus.KILLED
 
-    def _find_message_target(self, agent_type: str | None = None) -> Agent | None:
+    def _find_message_target(
+        self, agent_type: str | None = None, agent_id: str | None = None
+    ) -> Agent | None:
         """Return the best agent to receive an injected message.
 
         Priority:
-        1. If *agent_type* is given, return that agent (or None if not found).
-        2. Any RUNNING agent (first one found).
-        3. Last DONE agent with a session_id (enables resume into a finished agent).
+        1. If *agent_id* is given, return that exact agent.
+        2. If *agent_type* is given, return the first agent of that type.
+        3. Any RUNNING agent (first one found).
+        4. Last DONE agent with a session_id (enables resume into a finished agent).
         """
+        if agent_id is not None:
+            return next((a for a in self.agents if a.agent_id == agent_id), None)
         if agent_type is not None:
             return next((a for a in self.agents if a.spec.type.value == agent_type), None)
         running = next((a for a in self.agents if a.status == AgentStatus.RUNNING), None)
@@ -509,7 +514,9 @@ class Job:
         ]
         return done_with_session[-1] if done_with_session else None
 
-    async def send_message(self, message: str, agent_type: str | None = None) -> bool:
+    async def send_message(
+        self, message: str, agent_type: str | None = None, agent_id: str | None = None
+    ) -> bool:
         """Inject a user message into the job's coordination loop.
 
         If a matching agent is RUNNING, the message is queued in its inbox and
@@ -519,7 +526,7 @@ class Job:
 
         Returns True if a target was found and the message was delivered/queued.
         """
-        target = self._find_message_target(agent_type)
+        target = self._find_message_target(agent_type=agent_type, agent_id=agent_id)
         if target is None:
             logger.warning("send_message: no eligible agent in job %s", self.job_id)
             return False

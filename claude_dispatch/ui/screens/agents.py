@@ -36,7 +36,7 @@ class AgentsScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
+        Binding("1", "goto_root", "Dispatcher", show=False),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
@@ -65,7 +65,7 @@ class AgentsScreen(Screen[None]):
     def on_mount(self) -> None:
         desc = self._job.description[:60]
         self.query_one("#breadcrumb", Label).update(
-            f"[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  [bold]{desc}[/bold]"
+            f"[dim][1][/dim] [dim]DISPATCHER[/dim]  ›  [bold]{desc}[/bold]"
         )
         table = self.query_one("#agents-table", DataTable)
         table.add_columns("", "TYPE", "MODEL", "STATUS", "COST", "SESSION", "LAST ACTION")
@@ -156,6 +156,7 @@ class AgentsScreen(Screen[None]):
             return
         from claude_dispatch.ui.modals.prompt import PromptModal
 
+        agent_id = agent.agent_id
         agent_type = agent.spec.type.value
 
         def on_dismiss(message: str | None) -> None:
@@ -164,7 +165,7 @@ class AgentsScreen(Screen[None]):
 
             async def _deliver() -> None:
                 try:
-                    delivered = await self._job.send_message(message, agent_type=agent_type)
+                    delivered = await self._job.send_message(message, agent_id=agent_id)
                     if not delivered:
                         self.notify(
                             f"Could not deliver message to '{agent_type}'",

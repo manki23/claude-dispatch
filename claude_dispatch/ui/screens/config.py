@@ -53,7 +53,7 @@ class ConfigScreen(Screen[None]):
         Binding("ctrl+j", "test_jarvis", "Jarvis test", show=True),
         Binding("x", "toggle_executable", "chmod +x", show=True),
         Binding("d", "dispatcher", "Chat", show=True),
-        Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
+        Binding("1", "goto_root", "Dispatcher", show=False),
     ]
 
     def __init__(self, config: Config) -> None:

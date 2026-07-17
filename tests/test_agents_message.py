@@ -223,9 +223,7 @@ async def test_message_agent_calls_send_message(agents_app) -> None:
         screen.action_message_agent()
         await pilot.pause(0.2)
 
-        job.send_message.assert_awaited_once_with(
-            "add more context", agent_type=agent.spec.type.value
-        )
+        job.send_message.assert_awaited_once_with("add more context", agent_id=agent.agent_id)
 
 
 async def test_message_agent_empty_message_no_call(agents_app) -> None:
