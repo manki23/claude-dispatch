@@ -67,12 +67,14 @@ class MainScreen(Screen[None]):
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
         Binding("space", "toggle_select", "Select", show=True),
+        Binding("shift+space", "range_select", "Range select", show=False),
     ]
 
     def __init__(self, jobs: list[Job]) -> None:
         super().__init__()
         self.jobs = jobs
         self._selected: set[str] = set()
+        self._anchor_row: int | None = None
 
     def compose(self) -> ComposeResult:
         # k9s-style header: one horizontal band split into 3 columns
@@ -150,11 +152,27 @@ class MainScreen(Screen[None]):
         item = self._selected_job()
         if not item:
             return
+        table = self.query_one("#jobs-table", DataTable)
         job_id = item.job_id
         if job_id in self._selected:
             self._selected.discard(job_id)
+            self._anchor_row = None
         else:
             self._selected.add(job_id)
+            self._anchor_row = table.cursor_row
+        self._refresh()
+
+    def action_range_select(self) -> None:
+        """Select all jobs from the anchor row to the current cursor row (inclusive)."""
+        if not self.jobs:
+            return
+        table = self.query_one("#jobs-table", DataTable)
+        current_row = table.cursor_row
+        anchor = self._anchor_row if self._anchor_row is not None else current_row
+        lo, hi = min(anchor, current_row), max(anchor, current_row)
+        for idx in range(lo, min(hi + 1, len(self.jobs))):
+            self._selected.add(self.jobs[idx].job_id)
+        self._anchor_row = None
         self._refresh()
 
     def action_new_job(self) -> None:
