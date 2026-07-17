@@ -229,3 +229,13 @@ async def delete_job(job_id: str, db_path: Path = DB_FILE) -> None:
         await db.execute("DELETE FROM sessions WHERE job_id = ?", (job_id,))
         await db.execute("DELETE FROM messages WHERE job_id = ?", (job_id,))
         await db.commit()
+
+
+async def delete_agent_session(job_id: str, agent_type: str, db_path: Path = DB_FILE) -> None:
+    """Remove a single agent's session row from DB."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "DELETE FROM sessions WHERE job_id = ? AND agent_type = ?",
+            (job_id, agent_type),
+        )
+        await db.commit()
