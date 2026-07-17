@@ -108,19 +108,30 @@ class MainScreen(Screen):
     def action_new_job(self) -> None:
         from claude_dispatch.ui.modals.prompt import PromptModal
 
-        def on_dismiss(description: str | None) -> None:
-            if not description:
-                return
+        def on_name(instructions: str, name: str | None) -> None:
+            display = (name or "").strip() or instructions[:60]
             from claude_dispatch.job import Job
 
-            job = Job(description=description, config=self.app.config)
+            job = Job(description=display, instructions=instructions, config=self.app.config)
             self.jobs.append(job)
             self._refresh()
             self.app.run_worker(job.run(), exclusive=False)
 
+        def on_instructions(instructions: str | None) -> None:
+            if not instructions:
+                return
+            # Step 2: short display name (Esc or blank → auto-truncate from instructions)
+            self.app.push_screen(
+                PromptModal(
+                    label="Job name (optional) >",
+                    placeholder="short name for jobs list (blank = auto)",
+                ),
+                callback=lambda name: on_name(instructions, name),
+            )
+
         self.app.push_screen(
-            PromptModal(label="New job >", placeholder="describe the task…"),
-            callback=on_dismiss,
+            PromptModal(label="Task >", placeholder="describe the task in full detail…"),
+            callback=on_instructions,
         )
 
     def action_message_job(self) -> None:
@@ -203,6 +214,7 @@ class MainScreen(Screen):
 
         job = Job(
             description=row["description"] or "",
+            instructions=row.get("instructions") or "",
             config=self.app.config,
             job_id=job_id,
             status=job_status,

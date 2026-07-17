@@ -107,6 +107,65 @@ async def test_new_job_creates_job_with_correct_description(empty_app) -> None:
         assert job.status == JobStatus.RUNNING
 
 
+async def test_new_job_stores_full_instructions(empty_app) -> None:
+    """Instructions are stored on the job and description is separate short name."""
+    async with empty_app.run_test():
+        screen = empty_app.screen
+        call_count = [0]
+
+        def two_step_push(modal, callback=None, **kw):
+            call_count[0] += 1
+            if callback:
+                if call_count[0] == 1:
+                    # Step 1: return full instructions
+                    callback("Fix the auth bug in services/auth/handler.py line 42")
+                else:
+                    # Step 2: return a short name
+                    callback("Fix auth bug")
+
+        screen.app.push_screen = two_step_push
+
+        def fake_run_worker(coro, **kwargs):
+            if hasattr(coro, "close"):
+                coro.close()
+
+        screen.app.run_worker = fake_run_worker
+        screen.action_new_job()
+
+    job = screen.jobs[-1]
+    assert job.description == "Fix auth bug"
+    assert job.instructions == "Fix the auth bug in services/auth/handler.py line 42"
+
+
+async def test_new_job_blank_name_uses_truncated_instructions(empty_app) -> None:
+    """Blank name (step 2 empty/None) → description auto-truncated from instructions."""
+    async with empty_app.run_test():
+        screen = empty_app.screen
+        call_count = [0]
+        long_instructions = "A" * 80
+
+        def two_step_push(modal, callback=None, **kw):
+            call_count[0] += 1
+            if callback:
+                if call_count[0] == 1:
+                    callback(long_instructions)
+                else:
+                    callback(None)  # Esc on step 2
+
+        screen.app.push_screen = two_step_push
+
+        def fake_run_worker(coro, **kwargs):
+            if hasattr(coro, "close"):
+                coro.close()
+
+        screen.app.run_worker = fake_run_worker
+        screen.action_new_job()
+
+    job = screen.jobs[-1]
+    assert job.description == long_instructions[:60]
+    assert job.instructions == long_instructions
+
+
 # ── action_message_job ────────────────────────────────────────────────────────
 
 
