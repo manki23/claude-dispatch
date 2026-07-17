@@ -26,7 +26,6 @@ class AgentsScreen(Screen[None]):
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
         Binding("ctrl+1", "goto_root", "Dispatcher", show=False),
-        Binding("c", "converse", "Converse", show=True),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
@@ -137,14 +136,6 @@ class AgentsScreen(Screen[None]):
 
             self.app.pop_to_agents()  # type: ignore[attr-defined]
             self.app.push_screen(LogsScreen(job=self._job, agent=agent))
-
-    def action_converse(self) -> None:
-        agent = self._selected_agent()
-        if agent:
-            from claude_dispatch.ui.screens.conversation import ConversationScreen
-
-            self.app.pop_to_agents()  # type: ignore[attr-defined]
-            self.app.push_screen(ConversationScreen(job=self._job, agent=agent))
 
     def action_message_agent(self) -> None:
         agent = self._selected_agent()
