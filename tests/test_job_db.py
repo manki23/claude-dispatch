@@ -224,7 +224,11 @@ async def test_plan_phase_passes_resume_id_from_db(tmp_path: Path) -> None:
     with (
         patch("claude_dispatch.agent.query", fake_query),
         patch("claude_dispatch.job.upsert_session", new_callable=AsyncMock),
-        patch("claude_dispatch.job.get_session", new_callable=AsyncMock, return_value="old-plan-sess"),
+        patch(
+            "claude_dispatch.job.get_session",
+            new_callable=AsyncMock,
+            return_value="old-plan-sess",
+        ),
     ):
         await job._run_plan_phase()
 

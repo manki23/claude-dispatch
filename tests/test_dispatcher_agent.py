@@ -170,7 +170,9 @@ async def test_conversation_screen_dispatcher_mode_calls_agent_run_directly() ->
 
     async def fake_query(prompt, options):
         run_calls.append({"prompt": prompt, "system": options.system_prompt})
-        yield AssistantMessage(content=[TextBlock(text="here is the status")], model="claude-sonnet-4-6")
+        yield AssistantMessage(
+            content=[TextBlock(text="here is the status")], model="claude-sonnet-4-6"
+        )
         yield result_msg()
 
     factory_calls: list[str] = []
