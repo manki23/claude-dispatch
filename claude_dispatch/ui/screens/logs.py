@@ -22,6 +22,8 @@ class LogsScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False),
+        Binding("ctrl+2", "goto_job", "Job", show=False),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
         Binding("ctrl+y", "copy_log", "Copy log", show=True),
@@ -35,13 +37,11 @@ class LogsScreen(Screen[None]):
         self._prev_on_log: Callable[[str], None] | None = None
 
     def compose(self) -> ComposeResult:
-        agent_type = self._agent.spec.type.value
-        job_desc = self._job.description
         status = self._agent.status.value
 
         with Vertical():
+            yield Label("", id="breadcrumb")
             yield Label(
-                f"[bold]{job_desc}[/bold] › [cyan]{agent_type}[/cyan]  "
                 f"[dim]model:[/dim] {self._agent.model}  "
                 f"[dim]status:[/dim] {_status_markup(status)}  "
                 f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}",
@@ -51,6 +51,11 @@ class LogsScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.query_one("#breadcrumb", Label).update(
+            f"[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  "
+            f"[dim]<ctrl+2>[/dim] [dim]{self._job.description[:35]}[/dim]  ›  "
+            f"[bold]{self._agent.spec.type.value} logs[/bold]"
+        )
         log = self.query_one("#log-view", RichLog)
 
         # Render existing lines — from log file (subprocess) or in-memory list
@@ -95,7 +100,6 @@ class LogsScreen(Screen[None]):
     def _refresh_header(self) -> None:
         """Keep header status/cost in sync with the live agent."""
         self.query_one("#log-header", Label).update(
-            f"[bold]{self._job.description}[/bold] › [cyan]{self._agent.spec.type.value}[/cyan]  "
             f"[dim]model:[/dim] {self._agent.model}  "
             f"[dim]status:[/dim] {_status_markup(self._agent.status.value)}  "
             f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}"
@@ -140,6 +144,12 @@ class LogsScreen(Screen[None]):
             self.notify("Log copied to clipboard", timeout=2)
         except (FileNotFoundError, subprocess.CalledProcessError) as exc:
             self.notify(f"Copy failed: {exc}", severity="error", timeout=3)
+
+    def action_goto_root(self) -> None:
+        self.app.pop_to_main()  # type: ignore[attr-defined]
+
+    def action_goto_job(self) -> None:
+        self.app.pop_to_agents()  # type: ignore[attr-defined]
 
     def action_dispatcher(self) -> None:
         self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]

@@ -25,20 +25,23 @@ class AgentsScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("ctrl+1", "goto_root", "Dispatcher", show=False),
         Binding("c", "converse", "Converse", show=True),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("m", "message_agent", "Message agent", show=True),
         Binding("k", "kill_agent", "Kill agent", show=True),
+        Binding("space", "toggle_select", "Select", show=True),
     ]
 
     def __init__(self, job: Job) -> None:
         super().__init__()
         self._job = job
+        self._selected: set[str] = set()
 
     def compose(self) -> ComposeResult:
         with Vertical():
+            yield Label("", id="breadcrumb")
             yield Label(
-                f"[dim]Jobs[/dim] › [bold]{self._job.description}[/bold]  "
                 f"[dim]phase:[/dim] {self._job.phase.value}  "
                 f"[dim]cost:[/dim] ${self._job.cost_usd:.4f}",
                 id="agents-header",
@@ -47,8 +50,12 @@ class AgentsScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        desc = self._job.description[:60]
+        self.query_one("#breadcrumb", Label).update(
+            f"[dim]<ctrl+1>[/dim] [dim]DISPATCHER[/dim]  ›  [bold]{desc}[/bold]"
+        )
         table = self.query_one("#agents-table", DataTable)
-        table.add_columns("TYPE", "MODEL", "STATUS", "COST", "SESSION", "LAST ACTION")
+        table.add_columns("", "TYPE", "MODEL", "STATUS", "COST", "SESSION", "LAST ACTION")
         self._refresh_table()
         self.set_interval(1.0, self._refresh_table)
         self.set_interval(1.0, self._refresh_header)
@@ -56,9 +63,7 @@ class AgentsScreen(Screen[None]):
     def _refresh_header(self) -> None:
         """Keep header phase/cost in sync with the live job."""
         self.query_one("#agents-header", Label).update(
-            f"[dim]Jobs[/dim] › [bold]{self._job.description}[/bold]  "
-            f"[dim]phase:[/dim] {self._job.phase.value}  "
-            f"[dim]cost:[/dim] ${self._job.cost_usd:.4f}"
+            f"[dim]phase:[/dim] {self._job.phase.value}  [dim]cost:[/dim] ${self._job.cost_usd:.4f}"
         )
 
     def _refresh_table(self) -> None:
@@ -70,6 +75,7 @@ class AgentsScreen(Screen[None]):
                 f"[dim]{agent.session_id[:12]}…[/dim]" if agent.session_id else "[dim]—[/dim]"
             )
             table.add_row(
+                "☑" if agent.agent_id in self._selected else "☐",
                 agent.spec.type.value,
                 agent.model,
                 _STATUS_ICONS.get(agent.status, agent.status.value),
@@ -95,11 +101,23 @@ class AgentsScreen(Screen[None]):
         """DataTable fires RowSelected on Enter — drill into agent logs."""
         self.action_view_logs()
 
+    def action_toggle_select(self) -> None:
+        agent = self._selected_agent()
+        if not agent:
+            return
+        agent_id = agent.agent_id
+        if agent_id in self._selected:
+            self._selected.discard(agent_id)
+        else:
+            self._selected.add(agent_id)
+        self._refresh_table()
+
     def action_view_logs(self) -> None:
         agent = self._selected_agent()
         if agent:
             from claude_dispatch.ui.screens.logs import LogsScreen
 
+            self.app.pop_to_agents()  # type: ignore[attr-defined]
             self.app.push_screen(LogsScreen(job=self._job, agent=agent))
 
     def action_converse(self) -> None:
@@ -107,6 +125,7 @@ class AgentsScreen(Screen[None]):
         if agent:
             from claude_dispatch.ui.screens.conversation import ConversationScreen
 
+            self.app.pop_to_agents()  # type: ignore[attr-defined]
             self.app.push_screen(ConversationScreen(job=self._job, agent=agent))
 
     def action_message_agent(self) -> None:
@@ -140,10 +159,104 @@ class AgentsScreen(Screen[None]):
         )
 
     def action_kill_agent(self) -> None:
-        agent = self._selected_agent()
-        if agent and agent.status == AgentStatus.RUNNING:
-            agent.status = AgentStatus.KILLED
+        targets = [a for a in self._job.agents if a.agent_id in self._selected] or (
+            [self._selected_agent()] if self._selected_agent() else []
+        )
+        if not targets:
+            self.notify("No agent selected", severity="warning")
+            return
+
+        running = [a for a in targets if a.status == AgentStatus.RUNNING]
+        not_running = [a for a in targets if a.status != AgentStatus.RUNNING]
+
+        for a in running:
+            a.status = AgentStatus.KILLED
+
+        if len(targets) == 1 and not running:
+            # Single non-running agent — original behavior
+            agent = not_running[0]
+            from claude_dispatch.ui.modals.actions import ActionsModal
+
+            def on_choice_single(result: str | None) -> None:
+                if result == "v":
+                    self._job.agents.remove(agent)
+                    self._selected.discard(agent.agent_id)
+                    self._refresh_table()
+                    self.notify("Agent removed from view", severity="information")
+                elif result == "h":
+                    self._job.agents.remove(agent)
+                    self._selected.discard(agent.agent_id)
+                    self._refresh_table()
+                    self.app.run_worker(
+                        self._delete_agent_from_history(self._job.job_id, agent.spec.type.value),
+                        exclusive=False,
+                    )
+
+            self.app.push_screen(
+                ActionsModal(
+                    title=f"Agent not running (status: {agent.status.value})",
+                    choices=[
+                        ("v", "Remove from view"),
+                        ("h", "Remove from view + history"),
+                    ],
+                ),
+                callback=on_choice_single,
+            )
+        elif not_running:
+            # Bulk: offer options for non-running remainder
+            from claude_dispatch.ui.modals.actions import ActionsModal
+
+            title = f"{len(not_running)} agent(s) not running"
+            if running:
+                title += f" ({len(running)} killed)"
+
+            not_running_snapshot = list(not_running)
+
+            def on_choice_bulk(result: str | None) -> None:
+                if result == "v":
+                    for a in not_running_snapshot:
+                        self._job.agents.remove(a)
+                        self._selected.discard(a.agent_id)
+                    self._refresh_table()
+                    self.notify(
+                        f"{len(not_running_snapshot)} agent(s) removed from view",
+                        severity="information",
+                    )
+                elif result == "h":
+                    for a in not_running_snapshot:
+                        self._job.agents.remove(a)
+                        self._selected.discard(a.agent_id)
+                    self._refresh_table()
+                    for a in not_running_snapshot:
+                        self.app.run_worker(
+                            self._delete_agent_from_history(self._job.job_id, a.spec.type.value),
+                            exclusive=False,
+                        )
+
+            self.app.push_screen(
+                ActionsModal(
+                    title=title,
+                    choices=[
+                        ("v", f"Remove {len(not_running)} from view"),
+                        ("h", f"Remove {len(not_running)} from view + history"),
+                    ],
+                ),
+                callback=on_choice_bulk,
+            )
+        else:
+            # All were running → all killed
+            self._selected.clear()
             self._refresh_table()
+            self.notify(f"{len(running)} agent(s) killed", severity="information")
+
+    async def _delete_agent_from_history(self, job_id: str, agent_type: str) -> None:
+        from claude_dispatch.db import delete_agent_session
+
+        await delete_agent_session(job_id, agent_type)
+        self.notify("Agent removed from view and history", severity="information")
+
+    def action_goto_root(self) -> None:
+        self.app.pop_to_main()  # type: ignore[attr-defined]
 
     def action_dispatcher(self) -> None:
         self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]

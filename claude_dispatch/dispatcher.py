@@ -100,6 +100,16 @@ class DispatcherApp(App[None]):
         )
         self._dispatcher_agent.get_or_create_conversation()
 
+    def pop_to_main(self) -> None:
+        """Pop all screens above MainScreen (Textual _default + MainScreen = depth 2)."""
+        while len(self.screen_stack) > 2:
+            self.pop_screen()
+
+    def pop_to_agents(self) -> None:
+        """Pop all screens above AgentsScreen (_default + Main + Agents = depth 3)."""
+        while len(self.screen_stack) > 3:
+            self.pop_screen()
+
     def open_dispatcher_conversation(self) -> None:
         """Push ConversationScreen for the dispatcher agent with live context."""
         from claude_dispatch.dispatcher_context import build_dispatcher_system_prompt

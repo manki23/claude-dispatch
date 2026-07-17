@@ -12,13 +12,14 @@ from textual.widgets import DataTable, Label
 
 from claude_dispatch.job import Job, JobStatus
 
-# ASCII logo — 4 lines, readable block font for "DISPATCHER"
-# Each letter ~5 chars wide, uses only |  /  \  -  _  chars
+# ASCII logo — pyfiglet "small" font output for "DISPATCHER".
+# Lines ending with \ get a trailing space before [/cyan] to avoid Rich
+# treating \[ as an escaped bracket and rendering "[/cyan]" as literal text.
 _LOGO = (
-    "[cyan] ___ ___ ___ ___  _  _____  ___ _  _ ___ ___[/cyan]\n"
-    "[cyan]|   \\_  _/ __|| _ \\/_\\_   _|/ __|| || | __| _ \\[/cyan]\n"
-    "[cyan]| |) || |\\___ \\|  _/ _ \\| | | (__ | __ | _||   /[/cyan]\n"
-    "[cyan]|___/|___\\___/|_|/_/ \\_\\_|  \\___|_||_|___|_|\\_\\[/cyan]"
+    "[cyan] ___ ___ ___ ___  _ _____ ___ _  _ ___ ___ [/cyan]\n"
+    "[cyan]|   \\_ _/ __| _ \\/_\\_   _/ __| || | __| _ \\ [/cyan]\n"
+    "[cyan]| |) | |\\__ \\  _/ _ \\| || (__| __ | _||   /[/cyan]\n"
+    "[cyan]|___/___|___/_|/_/ \\_\\_| \\___|_||_|___|_|_\\ [/cyan]"
 )
 
 
@@ -31,7 +32,8 @@ _KEY_HINTS = (
     f"  {_key('n')}  New job       {_key('d')}  Chat\n"
     f"  {_key('m')}  Msg agent     {_key('c')}  Cost\n"
     f"  {_key('k')}  Kill job      {_key('?')}  Help\n"
-    f"  {_key('r')}  Resume        {_key('q')}  Quit"
+    f"  {_key('r')}  Resume        {_key('q')}  Quit\n"
+    f"  {_key('ctrl+p')}  Palette"
 )
 
 _STATUS_ICONS: dict[str, str] = {
@@ -64,11 +66,13 @@ class MainScreen(Screen[None]):
         Binding("c", "show_costs", "Costs", show=True),
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
+        Binding("space", "toggle_select", "Select", show=True),
     ]
 
     def __init__(self, jobs: list[Job]) -> None:
         super().__init__()
         self.jobs = jobs
+        self._selected: set[str] = set()
 
     def compose(self) -> ComposeResult:
         # k9s-style header: one horizontal band split into 3 columns
@@ -80,7 +84,7 @@ class MainScreen(Screen[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
-        table.add_columns("", "NAME", "PHASE", "AGENTS", "COST", "AGE")
+        table.add_columns("", "", "NAME", "PHASE", "AGENTS", "COST", "AGE")
         self._refresh()
         self.set_interval(1.0, self._refresh)
 
@@ -113,6 +117,7 @@ class MainScreen(Screen[None]):
             running_agents = sum(1 for a in job.agents if a.status.value == "running")
             total_agents = len(job.agents)
             table.add_row(
+                "☑" if job.job_id in self._selected else "☐",
                 _STATUS_ICONS.get(job.status, ""),
                 job.description,
                 job.phase.value if job.status == JobStatus.RUNNING else "[dim]—[/dim]",
@@ -140,6 +145,17 @@ class MainScreen(Screen[None]):
         self.action_drill_in()
 
     # ── Actions ────────────────────────────────────────────────────
+
+    def action_toggle_select(self) -> None:
+        item = self._selected_job()
+        if not item:
+            return
+        job_id = item.job_id
+        if job_id in self._selected:
+            self._selected.discard(job_id)
+        else:
+            self._selected.add(job_id)
+        self._refresh()
 
     def action_new_job(self) -> None:
         from claude_dispatch.ui.modals.prompt import PromptModal
@@ -194,16 +210,108 @@ class MainScreen(Screen[None]):
         if job:
             from claude_dispatch.ui.screens.agents import AgentsScreen
 
+            self.app.pop_to_main()  # type: ignore[attr-defined]
             self.app.push_screen(AgentsScreen(job=job))
 
     def action_kill_job(self) -> None:
-        job = self._selected_job()
-        if job and job.status == JobStatus.RUNNING:
-            job.kill()
+        targets = [j for j in self.jobs if j.job_id in self._selected] or (
+            [self._selected_job()] if self._selected_job() else []
+        )
+        if not targets:
+            self.notify("No job selected", severity="warning")
+            return
+
+        running = [j for j in targets if j.status == JobStatus.RUNNING]
+        not_running = [j for j in targets if j.status != JobStatus.RUNNING]
+
+        for j in running:
+            j.kill()
+
+        if len(targets) == 1 and not running:
+            # Single non-running job — original behavior
+            job = not_running[0]
+            from claude_dispatch.ui.modals.actions import ActionsModal
+
+            def on_choice_single(result: str | None) -> None:
+                if result == "v":
+                    self.jobs.remove(job)
+                    self._selected.discard(job.job_id)
+                    self._refresh()
+                    self.notify("Removed from view", severity="information")
+                elif result == "h":
+                    self.jobs.remove(job)
+                    self._selected.discard(job.job_id)
+                    self._refresh()
+                    self.app.run_worker(self._delete_from_history(job.job_id), exclusive=False)
+
+            self.app.push_screen(
+                ActionsModal(
+                    title=f"Job not running (status: {job.status.value})",
+                    choices=[
+                        ("v", "Remove from view"),
+                        ("h", "Remove from view + history"),
+                    ],
+                ),
+                callback=on_choice_single,
+            )
+        elif not_running:
+            # Bulk: offer options for non-running remainder
+            from claude_dispatch.ui.modals.actions import ActionsModal
+
+            title = f"{len(not_running)} job(s) not running"
+            if running:
+                title += f" ({len(running)} killed)"
+
+            not_running_snapshot = list(not_running)
+
+            def on_choice_bulk(result: str | None) -> None:
+                if result == "v":
+                    for j in not_running_snapshot:
+                        self.jobs.remove(j)
+                        self._selected.discard(j.job_id)
+                    self._refresh()
+                    self.notify(
+                        f"{len(not_running_snapshot)} job(s) removed from view",
+                        severity="information",
+                    )
+                elif result == "h":
+                    for j in not_running_snapshot:
+                        self.jobs.remove(j)
+                        self._selected.discard(j.job_id)
+                    self._refresh()
+                    for j in not_running_snapshot:
+                        self.app.run_worker(self._delete_from_history(j.job_id), exclusive=False)
+
+            self.app.push_screen(
+                ActionsModal(
+                    title=title,
+                    choices=[
+                        ("v", f"Remove {len(not_running)} from view"),
+                        ("h", f"Remove {len(not_running)} from view + history"),
+                    ],
+                ),
+                callback=on_choice_bulk,
+            )
+        else:
+            # All were running → all killed
+            self._selected.clear()
             self._refresh()
+            self.notify(f"{len(running)} job(s) killed", severity="information")
+
+    async def _delete_from_history(self, job_id: str) -> None:
+        from claude_dispatch.db import delete_job
+
+        await delete_job(job_id)
+        self.notify("Removed from view and history", severity="information")
 
     def action_resume_job(self) -> None:
-        """Open a job-picker showing all past jobs from DB."""
+        """If items selected, resume them directly; otherwise open picker."""
+        if self._selected:
+            for job_id in list(self._selected):
+                self.app.run_worker(self._do_resume(job_id), exclusive=False)
+            self._selected.clear()
+            self._refresh()
+            return
         self.app.run_worker(self._open_resume_picker(), exclusive=False)
 
     async def _open_resume_picker(self) -> None:
@@ -215,8 +323,8 @@ class MainScreen(Screen[None]):
             self.notify("No past jobs found in DB", severity="warning")
             return
 
-        def on_dismiss(job_id: str | None) -> None:
-            if job_id:
+        def on_dismiss(job_ids: list[str] | None) -> None:
+            for job_id in job_ids or []:
                 self.app.run_worker(self._do_resume(job_id), exclusive=False)
 
         self.app.push_screen(ResumeModal(jobs=past_jobs), callback=on_dismiss)
@@ -290,6 +398,7 @@ class MainScreen(Screen[None]):
         self._refresh()
         from claude_dispatch.ui.screens.agents import AgentsScreen
 
+        self.app.pop_to_main()  # type: ignore[attr-defined]
         self.app.push_screen(AgentsScreen(job=job))
 
     def action_dispatcher(self) -> None:
