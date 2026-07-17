@@ -215,9 +215,7 @@ async def test_plan_prompt_includes_prior_context(tmp_path: Path) -> None:
 
     async def fake_query(prompt, options):
         captured_prompts.append(prompt)
-        (tmp_path / "job-plan.yaml").write_text(
-            yaml.dump({"summary": "test", "agents": []})
-        )
+        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "test", "agents": []}))
         yield _result_msg()
 
     with patch("claude_dispatch.agent.query", fake_query):
@@ -253,9 +251,7 @@ async def test_plan_prompt_no_context_when_disabled(tmp_path: Path) -> None:
 
     async def fake_query(prompt, options):
         captured_prompts.append(prompt)
-        (tmp_path / "job-plan.yaml").write_text(
-            yaml.dump({"summary": "test", "agents": []})
-        )
+        (tmp_path / "job-plan.yaml").write_text(yaml.dump({"summary": "test", "agents": []}))
         yield _result_msg()
 
     with patch("claude_dispatch.agent.query", fake_query):
