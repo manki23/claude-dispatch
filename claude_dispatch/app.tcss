@@ -7,32 +7,34 @@ Screen {
 }
 
 /* ── k9s-style header ────────────────────────────────────────────── */
-#header-keys {
-    height: 1;
-    background: $primary-darken-3;
-    color: $text;
-    padding: 0 1;
-}
-
-#header-info {
-    height: 3;
-    background: $panel-darken-1;
-    border-bottom: solid $primary-darken-2;
+#dispatch-header {
+    height: 4;
+    background: $panel;
+    border-bottom: solid $primary-darken-1;
 }
 
 #header-context {
-    width: 1fr;
+    width: 28;
+    background: $panel;
     color: $text;
-    content-align: left middle;
-    padding: 0 1;
+    content-align: left top;
+    padding: 0 0;
+}
+
+#header-keys {
+    width: 1fr;
+    background: $panel;
+    color: $text-muted;
+    content-align: left top;
+    padding: 0 2;
 }
 
 #header-logo {
     width: 50;
     background: $surface-darken-1;
     color: $accent;
+    content-align: right top;
     padding: 0 1;
-    content-align: right middle;
     border-left: solid $primary-darken-2;
 }
 
