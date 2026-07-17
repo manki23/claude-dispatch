@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Any
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
@@ -51,14 +54,14 @@ class CostModal(ModalScreen[None]):
         Binding("c", "dismiss_modal", "Close", show=False),
     ]
 
-    def __init__(self, jobs: list) -> None:
+    def __init__(self, jobs: Sequence[Any]) -> None:
         super().__init__()
         self._jobs = jobs
 
     def compose(self) -> ComposeResult:
         with Static(id="cost-dialog"):
             yield Label("Cost Breakdown", id="cost-title")
-            table = DataTable(id="cost-table", show_cursor=False)
+            table: DataTable[str] = DataTable(id="cost-table", show_cursor=False)
             yield table
             total = sum(j.cost_usd for j in self._jobs)
             yield Label(f"Total: ${total:.4f}", id="cost-total")

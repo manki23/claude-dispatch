@@ -6,10 +6,11 @@ Also stores worker PIDs, log file paths, and a messages queue for TUI→agent IP
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
-from claude_dispatch.config import DB_FILE
+from claude_dispatch.config import DB_FILE as DB_FILE  # explicit re-export
 
 CREATE_SESSIONS = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -168,7 +169,7 @@ async def get_session(
             return row[0] if row else None
 
 
-async def list_jobs(db_path: Path = DB_FILE) -> list[dict]:
+async def list_jobs(db_path: Path = DB_FILE) -> list[dict[str, Any]]:
     """Return all known jobs with their latest status and aggregated cost."""
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
@@ -194,7 +195,7 @@ async def list_jobs(db_path: Path = DB_FILE) -> list[dict]:
             ]
 
 
-async def list_agents(job_id: str, db_path: Path = DB_FILE) -> list[dict]:
+async def list_agents(job_id: str, db_path: Path = DB_FILE) -> list[dict[str, Any]]:
     """Return all agent rows for a specific job, ordered by creation time."""
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(

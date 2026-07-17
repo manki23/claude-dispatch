@@ -68,7 +68,7 @@ class HelpModal(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Static(id="help-dialog"):
             yield Label("Keybindings", id="help-title")
-            table = DataTable(id="help-table", show_cursor=False)
+            table: DataTable[str] = DataTable(id="help-table", show_cursor=False)
             yield table
             yield Label("[ Esc ] close", id="help-close")
 

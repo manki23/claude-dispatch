@@ -20,7 +20,7 @@ _STATUS_ICONS: dict[str, str] = {
 }
 
 
-class AgentsScreen(Screen):
+class AgentsScreen(Screen[None]):
     """Drill-in view: agents for one Job. Enter → logs. Esc → back."""
 
     BINDINGS = [
@@ -146,7 +146,7 @@ class AgentsScreen(Screen):
             self._refresh_table()
 
     def action_dispatcher(self) -> None:
-        self.app.open_dispatcher_conversation()
+        self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

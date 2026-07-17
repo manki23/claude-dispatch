@@ -13,6 +13,7 @@ from claude_code_sdk import ClaudeCodeOptions, query
 from claude_code_sdk.types import (
     AssistantMessage,
     HookContext,
+    HookJSONOutput,
     HookMatcher,
     ResultMessage,
     TextBlock,
@@ -133,7 +134,7 @@ class Agent:
     _inbox: asyncio.Queue[str] = field(default_factory=asyncio.Queue, init=False, repr=False)
 
     # The asyncio Task running agent.run() — set at the start of run(), cleared on exit.
-    _task: asyncio.Task | None = field(default=None, init=False, repr=False)
+    _task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     # Lazily-created conversation thread (None until first converse() call).
     conversation: ConversationThread | None = field(default=None, repr=False)
@@ -236,7 +237,7 @@ class Agent:
             input_data: dict[str, Any],
             tool_use_id: str | None,
             context: HookContext,
-        ) -> dict[str, Any]:
+        ) -> HookJSONOutput:
             """PostToolUse hook: accumulate cost from token usage."""
             usage = input_data.get("response", {}).get("usage", {})
             input_tokens: int = usage.get("input_tokens", 0)
@@ -245,7 +246,7 @@ class Agent:
             self.cost_usd += cost_delta
             if self.on_cost:
                 self.on_cost(self.cost_usd)
-            return {}
+            return HookJSONOutput()
 
         options = ClaudeCodeOptions(
             model=self.model,

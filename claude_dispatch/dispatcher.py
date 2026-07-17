@@ -78,7 +78,7 @@ async def _load_jobs_from_db(config: Config) -> list[Job]:
     return jobs
 
 
-class DispatcherApp(App):
+class DispatcherApp(App[None]):
     """k9s-style TUI for orchestrating parallel Claude Code sessions."""
 
     TITLE = "claude-dispatch"

@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import DB_FILE, Config
@@ -123,7 +124,7 @@ class Job:
             logger.exception("db get_session failed for agent %s", agent.agent_id)
             return None
 
-    async def _fire(self, hook_name: str, payload: dict) -> None:
+    async def _fire(self, hook_name: str, payload: dict[str, Any]) -> None:
         """Fire a lifecycle hook; never raises."""
         await fire(hook_name, payload, hooks_dir=self.hooks_dir)
 
@@ -161,7 +162,7 @@ class Job:
             ),
         )
 
-    def _agent_summaries(self) -> list[dict]:
+    def _agent_summaries(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": a.spec.type.value,
