@@ -233,8 +233,9 @@ class MainScreen(Screen[None]):
             self.app.push_screen(AgentsScreen(job=job))
 
     def action_kill_job(self) -> None:
+        selected_job = self._selected_job()
         targets = [j for j in self.jobs if j.job_id in self._selected] or (
-            [self._selected_job()] if self._selected_job() else []
+            [selected_job] if selected_job is not None else []
         )
         if not targets:
             self.notify("No job selected", severity="warning")

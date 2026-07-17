@@ -168,8 +168,9 @@ class AgentsScreen(Screen[None]):
         )
 
     def action_kill_agent(self) -> None:
+        selected_agent = self._selected_agent()
         targets = [a for a in self._job.agents if a.agent_id in self._selected] or (
-            [self._selected_agent()] if self._selected_agent() else []
+            [selected_agent] if selected_agent is not None else []
         )
         if not targets:
             self.notify("No agent selected", severity="warning")

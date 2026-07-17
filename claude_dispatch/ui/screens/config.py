@@ -63,12 +63,12 @@ class ConfigScreen(Screen[None]):
         with Vertical(id="view-config"):
             yield TextArea(id="yaml-editor", language="yaml", read_only=True)
 
-        with Vertical(id="view-hooks", display=False):
+        with Vertical(id="view-hooks"):
             yield DataTable(id="hooks-table", cursor_type="row")
-            yield TextArea(id="hook-editor", read_only=True, display=False)
+            yield TextArea(id="hook-editor", read_only=True)
             yield Label("", id="hook-test-output")
 
-        with Vertical(id="view-jarvis", display=False):
+        with Vertical(id="view-jarvis"):
             yield Label("", id="jarvis-info")
             yield RichLog(id="jarvis-preview", wrap=True)
 
@@ -78,6 +78,11 @@ class ConfigScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#breadcrumb", Label).update("[dim]DISPATCHER[/dim]  ›  [bold]config[/bold]")
+
+        # Hide non-active views
+        self.query_one("#view-hooks", Vertical).display = False
+        self.query_one("#view-jarvis", Vertical).display = False
+        self.query_one("#hook-editor", TextArea).display = False
 
         # Load config YAML
         yaml_editor = self.query_one("#yaml-editor", TextArea)
