@@ -16,7 +16,11 @@ from claude_dispatch.job import Job
 from claude_dispatch.ui.widgets.chat_input import ChatInput
 from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
 
-_KEY_HINTS = f"  {key_hint('esc')}  Back\n  {key_hint('end')}  Scroll to end"
+_KEY_HINTS = (
+    f"  {key_hint('esc')}  Back          {key_hint('d')}  Chat w/ dispatcher\n"
+    f"  {key_hint('ctrl+1')}  Root          {key_hint('ctrl+2')}  Job\n"
+    f"  {key_hint('end')}  Scroll to end"
+)
 
 
 class ConversationScreen(Screen[None]):
@@ -36,6 +40,7 @@ class ConversationScreen(Screen[None]):
         Binding("escape", "go_back", "Back", show=True),
         Binding("ctrl+1", "goto_root", "Dispatcher", show=False, priority=True),
         Binding("ctrl+2", "goto_job", "Job", show=False, priority=True),
+        Binding("d", "dispatcher", "Chat w/ dispatcher", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
     ]
 

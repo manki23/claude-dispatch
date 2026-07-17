@@ -223,6 +223,79 @@ async def list_agents(job_id: str, db_path: Path = DB_FILE) -> list[dict[str, An
             ]
 
 
+async def load_jobs_from_db(config: Any, db_path: Path = DB_FILE) -> list[Any]:
+    """Reconstruct Job+Agent objects from DB (canonical implementation).
+
+    Handles PID liveness check, db_enabled flag, and log-file hydration.
+    Used by both the app startup loader and the resume action.
+    """
+    import os
+
+    from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
+    from claude_dispatch.job import Job, JobStatus
+
+    job_rows = await list_jobs(db_path=db_path)
+    jobs: list[Any] = []
+
+    for row in job_rows:
+        try:
+            job_status = JobStatus(row["status"])
+        except (ValueError, TypeError):
+            job_status = JobStatus.DONE
+
+        job = Job(
+            description=row["description"] or "",
+            instructions=row.get("instructions") or "",
+            config=config,
+            job_id=row["job_id"],
+            status=job_status,
+            db_enabled=True,
+        )
+
+        agent_rows = await list_agents(row["job_id"], db_path=db_path)
+        for ar in agent_rows:
+            try:
+                agent_type = AgentType(ar["agent_type"])
+            except ValueError:
+                continue
+            try:
+                agent_status = AgentStatus(ar["status"])
+            except (ValueError, TypeError):
+                agent_status = AgentStatus.DONE
+
+            # Check PID liveness — mark FAILED if process is gone
+            pid = ar.get("pid")
+            if agent_status == AgentStatus.RUNNING and pid:
+                try:
+                    os.kill(pid, 0)
+                except (ProcessLookupError, PermissionError):
+                    agent_status = AgentStatus.FAILED
+
+            agent = Agent(
+                spec=AgentSpec(type=agent_type),
+                job_id=row["job_id"],
+                agent_id=f"{row['job_id']}-{ar['agent_type']}",
+                status=agent_status,
+                session_id=ar["session_id"],
+                cost_usd=ar["cost_usd"] or 0.0,
+                log_path=ar.get("log_path"),
+            )
+            # Hydrate in-memory log lines from log file
+            if agent.log_path:
+                lp = Path(agent.log_path)
+                if lp.exists():
+                    try:
+                        agent.log_lines = lp.read_text().splitlines()
+                    except OSError:
+                        pass
+
+            job.agents.append(agent)
+
+        jobs.append(job)
+
+    return jobs
+
+
 async def delete_job(job_id: str, db_path: Path = DB_FILE) -> None:
     """Remove all session rows for a job (used when a job is killed/discarded)."""
     async with aiosqlite.connect(db_path) as db:
