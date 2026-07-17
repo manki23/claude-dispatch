@@ -29,8 +29,8 @@ def _key(k: str) -> str:
 
 
 _KEY_HINTS = (
-    f"  {_key('n')}  New job       {_key('d')}  Chat\n"
-    f"  {_key('m')}  Msg agent     {_key('c')}  Cost\n"
+    f"  {_key('n')}  New job       {_key('d')}  Chat w/ dispatcher\n"
+    f"  {_key('m')}  Msg job       {_key('c')}  Cost\n"
     f"  {_key('k')}  Kill job      {_key('?')}  Help\n"
     f"  {_key('r')}  Resume        {_key('q')}  Quit\n"
     f"  {_key('ctrl+p')}  Palette"
@@ -62,7 +62,7 @@ class MainScreen(Screen[None]):
         Binding("m", "message_job", "Message job", show=True),
         Binding("k", "kill_job", "Kill job", show=True),
         Binding("r", "resume_job", "Resume", show=True),
-        Binding("d", "dispatcher", "Chat", show=True),
+        Binding("d", "dispatcher", "Chat w/ dispatcher", show=True),
         Binding("c", "show_costs", "Costs", show=True),
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
