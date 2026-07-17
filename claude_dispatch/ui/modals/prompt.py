@@ -6,7 +6,9 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label
+from textual.widgets import Label
+
+from claude_dispatch.ui.widgets.chat_input import ChatInput
 
 
 class PromptModal(ModalScreen[str | None]):
@@ -21,7 +23,8 @@ class PromptModal(ModalScreen[str | None]):
         background: transparent;
     }
     #prompt-container {
-        height: 3;
+        height: auto;
+        max-height: 9;
         background: $primary-darken-3;
         border-top: solid $primary;
         padding: 0 1;
@@ -37,6 +40,8 @@ class PromptModal(ModalScreen[str | None]):
     }
     #prompt-input {
         width: 1fr;
+        height: auto;
+        max-height: 6;
         border: none;
         background: transparent;
         color: $text;
@@ -55,13 +60,14 @@ class PromptModal(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Horizontal(id="prompt-container"):
             yield Label(self._label, id="prompt-label")
-            yield Input(placeholder=self._placeholder, id="prompt-input")
+            yield ChatInput(placeholder=self._placeholder, id="prompt-input")
 
     def on_mount(self) -> None:
-        self.query_one("#prompt-input", Input).focus()
+        self.query_one("#prompt-input", ChatInput).focus()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        value = event.value.strip()
+    def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
+        chat_input = self.query_one("#prompt-input", ChatInput)
+        value = chat_input.get_text_and_clear()
         self.dismiss(value if value else None)
 
     def action_cancel(self) -> None:

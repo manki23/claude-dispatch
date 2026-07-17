@@ -25,6 +25,9 @@ class LogsScreen(Screen[None]):
         Binding("ctrl+1", "goto_root", "Dispatcher", show=False),
         Binding("ctrl+2", "goto_job", "Job", show=False),
         Binding("d", "dispatcher", "Chat", show=True),
+        Binding("a", "toggle_autoscroll", "Autoscroll", show=True),
+        Binding("w", "toggle_wrap", "Wrap", show=True),
+        Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
         Binding("ctrl+y", "copy_log", "Copy log", show=True),
     ]
@@ -35,6 +38,8 @@ class LogsScreen(Screen[None]):
         self._agent = agent
         self._rendered_count: int = 0
         self._prev_on_log: Callable[[str], None] | None = None
+        self._autoscroll: bool = True
+        self._fullscreen: bool = False
 
     def compose(self) -> ComposeResult:
         status = self._agent.status.value
@@ -56,6 +61,7 @@ class LogsScreen(Screen[None]):
             f"[dim]<ctrl+2>[/dim] [dim]{self._job.description[:35]}[/dim]  ›  "
             f"[bold]{self._agent.spec.type.value} logs[/bold]"
         )
+        self.query_one("#log-view", RichLog).focus()
         log = self.query_one("#log-view", RichLog)
 
         # Render existing lines — from log file (subprocess) or in-memory list
@@ -90,19 +96,20 @@ class LogsScreen(Screen[None]):
     # ── internal helpers ───────────────────────────────────────────
 
     def _append_line(self, line: str) -> None:
-        """Write one line to the RichLog and auto-scroll if already at bottom."""
+        """Write one line to the RichLog and auto-scroll if flag is set."""
         log = self.query_one("#log-view", RichLog)
-        at_bottom = log.scroll_y >= log.virtual_size.height - log.size.height - 1
         log.write(line)
-        if at_bottom:
+        if self._autoscroll:
             log.scroll_end(animate=False)
 
     def _refresh_header(self) -> None:
         """Keep header status/cost in sync with the live agent."""
+        scroll_indicator = "[green]on[/green]" if self._autoscroll else "[dim red]off[/dim red]"
         self.query_one("#log-header", Label).update(
             f"[dim]model:[/dim] {self._agent.model}  "
             f"[dim]status:[/dim] {_status_markup(self._agent.status.value)}  "
-            f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}"
+            f"[dim]cost:[/dim] ${self._agent.cost_usd:.4f}  "
+            f"[dim]auto-scroll:[/dim] {scroll_indicator}"
         )
 
     def _poll_new_lines(self) -> None:
@@ -122,6 +129,23 @@ class LogsScreen(Screen[None]):
             self._rendered_count += len(new_lines)
 
     # ── actions ───────────────────────────────────────────────────
+
+    def action_toggle_autoscroll(self) -> None:
+        self._autoscroll = not self._autoscroll
+        self._refresh_header()
+        if self._autoscroll:
+            self.query_one("#log-view", RichLog).scroll_end(animate=False)
+
+    def action_toggle_wrap(self) -> None:
+        log = self.query_one("#log-view", RichLog)
+        log.wrap = not log.wrap
+
+    def action_toggle_fullscreen(self) -> None:
+        self._fullscreen = not self._fullscreen
+        show = not self._fullscreen
+        self.query_one("#breadcrumb", Label).display = show
+        self.query_one("#log-header", Label).display = show
+        self.query_one(Footer).display = show
 
     def action_copy_log(self) -> None:
         """Copy all log lines to the system clipboard."""
