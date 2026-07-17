@@ -231,6 +231,81 @@ async def delete_job(job_id: str, db_path: Path = DB_FILE) -> None:
         await db.commit()
 
 
+async def get_agent_type_stats(db_path: Path = DB_FILE) -> list[dict[str, Any]]:
+    """Per-agent-type aggregates: count, cost, avg duration, success rate."""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            """
+            SELECT agent_type,
+                   COUNT(*) as count,
+                   SUM(cost_usd) as total_cost,
+                   AVG(cost_usd) as avg_cost,
+                   AVG((julianday(updated_at) - julianday(created_at)) * 86400) as avg_duration_s,
+                   SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END)
+                       * 100.0 / COUNT(*) as success_pct
+            FROM sessions
+            GROUP BY agent_type
+            ORDER BY total_cost DESC
+            """
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "agent_type": r[0],
+                    "count": r[1],
+                    "total_cost": r[2] or 0.0,
+                    "avg_cost": r[3] or 0.0,
+                    "avg_duration_s": r[4] or 0.0,
+                    "success_pct": r[5] or 0.0,
+                }
+                for r in rows
+            ]
+
+
+async def get_daily_cost_series(days: int = 30, db_path: Path = DB_FILE) -> list[dict[str, Any]]:
+    """Daily cost totals for the last N days."""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            """
+            SELECT date(created_at) as day, SUM(cost_usd) as daily_cost
+            FROM sessions
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY date(created_at)
+            ORDER BY day ASC
+            """,
+            (f"-{days} days",),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [{"day": r[0], "daily_cost": r[1] or 0.0} for r in rows]
+
+
+async def get_top_expensive_jobs(limit: int = 10, db_path: Path = DB_FILE) -> list[dict[str, Any]]:
+    """Top N most expensive jobs by total cost."""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            """
+            SELECT job_id, description, SUM(cost_usd) as total_cost,
+                   COUNT(*) as agent_count, MAX(status) as status
+            FROM sessions
+            GROUP BY job_id
+            ORDER BY total_cost DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "job_id": r[0],
+                    "description": r[1],
+                    "total_cost": r[2] or 0.0,
+                    "agent_count": r[3],
+                    "status": r[4],
+                }
+                for r in rows
+            ]
+
+
 async def delete_agent_session(job_id: str, agent_type: str, db_path: Path = DB_FILE) -> None:
     """Remove a single agent's session row from DB."""
     async with aiosqlite.connect(db_path) as db:

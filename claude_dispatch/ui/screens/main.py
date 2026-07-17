@@ -32,8 +32,8 @@ _KEY_HINTS = (
     f"  {_key('n')}  New job       {_key('d')}  Chat w/ dispatcher\n"
     f"  {_key('m')}  Msg job       {_key('c')}  Cost\n"
     f"  {_key('k')}  Kill job      {_key('?')}  Help\n"
-    f"  {_key('r')}  Resume        {_key('q')}  Quit\n"
-    f"  {_key('ctrl+p')}  Palette"
+    f"  {_key('r')}  Resume        {_key('s')}  Stats\n"
+    f"  {_key('q')}  Quit          {_key('ctrl+p')}  Palette"
 )
 
 _STATUS_ICONS: dict[str, str] = {
@@ -64,6 +64,7 @@ class MainScreen(Screen[None]):
         Binding("r", "resume_job", "Resume", show=True),
         Binding("d", "dispatcher", "Chat w/ dispatcher", show=True),
         Binding("c", "show_costs", "Costs", show=True),
+        Binding("s", "show_stats", "Stats", show=True),
         Binding("o", "open_config", "Config", show=True),
         Binding("question_mark", "show_help", "Help", show=True),
         Binding("q", "quit", "Quit", show=True),
@@ -427,6 +428,11 @@ class MainScreen(Screen[None]):
         from claude_dispatch.ui.modals.cost import CostModal
 
         self.app.push_screen(CostModal(jobs=self.jobs))
+
+    def action_show_stats(self) -> None:
+        from claude_dispatch.ui.screens.stats import StatsScreen
+
+        self.app.push_screen(StatsScreen())
 
     def action_show_help(self) -> None:
         from claude_dispatch.ui.modals.help import HelpModal
