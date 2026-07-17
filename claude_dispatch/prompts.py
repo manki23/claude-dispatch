@@ -52,13 +52,25 @@ agents:
 """
 
 
-def build_plan_prompt(description: str, plan_path: str) -> str:
-    """Construct the full prompt sent to the plan agent."""
-    return (
-        f"Task description:\n{description}\n\n"
+def build_plan_prompt(
+    description: str,
+    plan_path: str,
+    prior_context: str | None = None,
+) -> str:
+    """Construct the full prompt sent to the plan agent.
+
+    If *prior_context* is provided (e.g. from the Jarvis vault), it is
+    injected between the task description and the write instruction so the
+    plan agent knows what work has already been done.
+    """
+    parts = [f"Task description:\n{description}"]
+    if prior_context:
+        parts.append(prior_context)
+    parts.append(
         f"Write the execution plan to: {plan_path}\n\n"
         "Explore the relevant repositories with Read/Glob/Grep, then write the plan file."
     )
+    return "\n\n".join(parts)
 
 
 EXECUTION_SYSTEM_PROMPT = """\

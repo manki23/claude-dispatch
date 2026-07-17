@@ -38,6 +38,11 @@ class HooksConfig(BaseModel):
     directory: str = str(HOOKS_DIR)
 
 
+class JarvisConfig(BaseModel):
+    enabled: bool = True
+    vault_path: str = ""  # absolute or ~-prefixed path to Obsidian vault root
+
+
 class Config(BaseModel):
     repos: dict[str, str] = Field(default_factory=dict)
     worktree_pattern: str = "{repo}-{job_id}"
@@ -46,6 +51,7 @@ class Config(BaseModel):
     claude: ClaudeConfig = Field(default_factory=ClaudeConfig)
     limits: CostLimits = Field(default_factory=CostLimits)
     hooks: HooksConfig = Field(default_factory=HooksConfig)
+    jarvis: JarvisConfig = Field(default_factory=JarvisConfig)
 
 
 def load_config() -> Config:

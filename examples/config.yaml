@@ -1,0 +1,52 @@
+# claude-dispatch configuration example
+# Copy to ~/.claude-dispatch/config.yaml and fill in your values.
+# NEVER commit your actual config.yaml — it contains personal paths.
+
+# ── Repos ──────────────────────────────────────────────────────────────────
+# Map a short name to the absolute path of each repo on your machine.
+# The plan agent uses these names to decide which worktrees to create.
+repos:
+  my-main-repo: ~/code/my-main-repo
+  my-other-repo: ~/code/my-other-repo
+  my-frontend: ~/code/my-frontend
+
+# ── Worktree & branch naming ───────────────────────────────────────────────
+# Patterns for auto-created git worktrees and branches.
+# Available variables: {repo}, {job_id}, {slug}, {username}
+worktree_pattern: "{repo}-{job_id}"          # e.g. my-main-repo-TICKET-123
+branch_pattern: "{username}/{job_id}/{slug}" # e.g. alice/TICKET-123/fix-auth
+
+# ── Defaults ───────────────────────────────────────────────────────────────
+defaults:
+  plan_model: claude-sonnet-4-6          # model for plan agents
+  execute_model: claude-haiku-4-5-20251001  # model for execution agents
+  username: your-github-username
+  max_parallel_agents: 5                 # max agents running simultaneously
+
+# ── Claude integration ─────────────────────────────────────────────────────
+# Path to your Claude Code config — MCP servers are inherited from here.
+# All agents get the same MCP tools your regular Claude Code session has.
+claude:
+  mcp_config: ~/.claude.json
+
+# ── Cost limits ────────────────────────────────────────────────────────────
+# Optional hard limits to prevent runaway spend.
+limits:
+  max_cost_per_agent: 1.00   # USD, kill agent if exceeded
+  max_cost_per_job: 5.00     # USD, kill job if exceeded
+  warn_cost_dispatcher: 10.00  # USD, show warning in TUI
+
+# ── Hooks ──────────────────────────────────────────────────────────────────
+# Executable scripts in ~/.claude-dispatch/hooks/ are called at lifecycle events.
+# See examples/hooks/ for reference implementations.
+hooks:
+  enabled: true
+  directory: ~/.claude-dispatch/hooks
+
+# ── Jarvis context injection ────────────────────────────────────────────────
+# If a job description mentions a Jira ticket (e.g. MOPU-668), dispatch looks
+# for a matching note in your vault and prepends prior context to the plan prompt.
+# This prevents agents from re-doing work that is already in progress or done.
+jarvis:
+  enabled: true
+  vault_path: ~/Jarvis    # path to your Obsidian vault root
