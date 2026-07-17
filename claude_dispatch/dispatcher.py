@@ -91,7 +91,10 @@ class DispatcherApp(App[None]):
         self.jobs: list[Job] = jobs if jobs is not None else []
         # Singleton dispatcher agent — created once, resumed across opens via session_id.
         self._dispatcher_agent: Agent = Agent(
-            spec=AgentSpec(type=AgentType.DISPATCHER),
+            spec=AgentSpec(
+                type=AgentType.DISPATCHER,
+                mcp_config_path=self.config.claude.mcp_config or None,
+            ),
             job_id="dispatcher",
             agent_id="dispatcher-0",
         )

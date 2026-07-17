@@ -17,10 +17,26 @@ from claude_code_sdk.types import (
     HookMatcher,
     ResultMessage,
     TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _format_tool_args(input_data: dict[str, Any]) -> str:
+    """Format tool input dict as a compact arg string (like Claude Code CLI)."""
+    parts = []
+    for k, v in list(input_data.items())[:3]:
+        sv = str(v)
+        if len(sv) > 60:
+            sv = sv[:57] + "..."
+        parts.append(f"{k}={sv!r}")
+    if len(input_data) > 3:
+        parts.append("...")
+    return ", ".join(parts)
 
 
 class AgentType(str, Enum):
@@ -81,7 +97,7 @@ AGENT_DEFAULT_TOOLS: dict[AgentType, list[str]] = {
     AgentType.TEST: ["Bash"],
     AgentType.SLACK: [],  # MCP tools only
     AgentType.REVIEW: ["Read", "Glob", "Grep"],
-    AgentType.DISPATCHER: [],  # read-only meta-agent: no tools, context injected via system prompt
+    AgentType.DISPATCHER: ["Read"],  # read-only: can inspect files, cannot execute
 }
 
 # Default model per agent type.
@@ -268,15 +284,33 @@ class Agent:
                 if isinstance(message, AssistantMessage):
                     assistant_texts: list[str] = []
                     for block in message.content:
-                        if isinstance(block, TextBlock):
+                        if isinstance(block, ThinkingBlock):
+                            preview = block.thinking[:120].replace("\n", " ")
+                            self._append_log(f"[dim]💭 {preview}…[/dim]")
+                        elif isinstance(block, TextBlock):
                             self._append_log(block.text)
                             assistant_texts.append(block.text)
                         elif isinstance(block, ToolUseBlock):
                             self.last_action = f"{block.name}(...)"
-                            self._append_log(f"[tool] {block.name}")
-                    # Flush accumulated text as one assistant turn.
+                            args = _format_tool_args(block.input)
+                            self._append_log(
+                                f"[bold yellow]⚙[/bold yellow] "
+                                f"[yellow]{block.name}[/yellow]({args})"
+                            )
                     if assistant_texts and self.conversation is not None:
                         self.conversation.add_assistant("\n".join(assistant_texts))
+                elif isinstance(message, UserMessage):
+                    for result_block in message.content:
+                        if isinstance(result_block, ToolResultBlock):
+                            raw_content = result_block.content
+                            if isinstance(raw_content, str):
+                                preview = raw_content[:300].replace("\n", "↵")
+                                self._append_log(f"[dim green]  ⎿ {preview}[/dim green]")
+                            elif isinstance(raw_content, list):
+                                for cb in raw_content:
+                                    if isinstance(cb, TextBlock):
+                                        preview = cb.text[:300].replace("\n", "↵")
+                                        self._append_log(f"[dim green]  ⎿ {preview}[/dim green]")
                 elif isinstance(message, ResultMessage):
                     self.session_id = message.session_id
                     if message.total_cost_usd is not None:
@@ -285,6 +319,10 @@ class Agent:
                             self.on_cost(self.cost_usd)
                     final_status = AgentStatus.FAILED if message.is_error else AgentStatus.DONE
                     self._set_status(final_status)
+                    cost_str = f"${self.cost_usd:.4f}"
+                    ok = not message.is_error
+                    icon = "[bold green]✓[/bold green]" if ok else "[bold red]✗[/bold red]"
+                    self._append_log(f"{icon} {final_status.value}  cost={cost_str}")
                     logger.info(
                         "agent %s turn finished: status=%s cost=%.4f session=%s",
                         self.agent_id,
@@ -293,7 +331,7 @@ class Agent:
                         self.session_id,
                     )
         except Exception as exc:
-            self._append_log(f"[error] {exc}")
+            self._append_log(f"[bold red][error][/bold red] {exc}")
             self._set_status(AgentStatus.FAILED)
             logger.exception("agent %s raised: %s", self.agent_id, exc)
             raise

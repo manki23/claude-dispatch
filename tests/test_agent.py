@@ -154,7 +154,7 @@ async def test_run_records_tool_use() -> None:
         await agent.run("run tests")
 
     assert agent.last_action == "Bash(...)"
-    assert "[tool] Bash" in agent.log_lines
+    assert any("Bash" in line for line in agent.log_lines)
 
 
 @pytest.mark.asyncio

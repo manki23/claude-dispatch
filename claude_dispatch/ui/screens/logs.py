@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import platform
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -22,6 +24,7 @@ class LogsScreen(Screen[None]):
         Binding("escape", "go_back", "Back", show=True),
         Binding("d", "dispatcher", "Chat", show=True),
         Binding("end", "scroll_end", "Scroll to end", show=True),
+        Binding("ctrl+y", "copy_log", "Copy log", show=True),
     ]
 
     def __init__(self, job: Job, agent: Agent) -> None:
@@ -115,6 +118,28 @@ class LogsScreen(Screen[None]):
             self._rendered_count += len(new_lines)
 
     # ── actions ───────────────────────────────────────────────────
+
+    def action_copy_log(self) -> None:
+        """Copy all log lines to the system clipboard."""
+        lines = self._agent.log_lines[:]
+        if self._agent.log_path:
+            lp = Path(self._agent.log_path)
+            if lp.exists():
+                lines = lp.read_text().splitlines()
+        text = "\n".join(lines)
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.run(["pbcopy"], input=text.encode(), check=True)
+            elif system == "Linux":
+                subprocess.run(
+                    ["xclip", "-selection", "clipboard"], input=text.encode(), check=True
+                )
+            elif system == "Windows":
+                subprocess.run(["clip"], input=text.encode(), check=True)
+            self.notify("Log copied to clipboard", timeout=2)
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            self.notify(f"Copy failed: {exc}", severity="error", timeout=3)
 
     def action_dispatcher(self) -> None:
         self.app.open_dispatcher_conversation()  # type: ignore[attr-defined]
