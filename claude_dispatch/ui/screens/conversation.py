@@ -14,6 +14,9 @@ from textual.widgets import Footer, Label, RichLog
 from claude_dispatch.agent import Agent, ConversationThread, Turn
 from claude_dispatch.job import Job
 from claude_dispatch.ui.widgets.chat_input import ChatInput
+from claude_dispatch.ui.widgets.dispatch_header import DispatchHeader, key_hint
+
+_KEY_HINTS = f"  {key_hint('esc')}  Back\n  {key_hint('end')}  Scroll to end"
 
 
 class ConversationScreen(Screen[None]):
@@ -52,6 +55,7 @@ class ConversationScreen(Screen[None]):
         self._awaiting_reply: bool = False
 
     def compose(self) -> ComposeResult:
+        yield DispatchHeader(_KEY_HINTS)
         with Vertical():
             yield Label("", id="breadcrumb")
             yield Label(
@@ -125,6 +129,14 @@ class ConversationScreen(Screen[None]):
         if not message:
             return
 
+        try:
+            await self._process_input(message)
+        except Exception as exc:
+            self._awaiting_reply = False
+            self._set_activity("")
+            self.notify(f"Error: {exc}", severity="error")
+
+    async def _process_input(self, message: str) -> None:
         # @ routing syntax: @job_id[:agent_type] message
         # Routes directly to a job's agent inbox — no LLM involved.
         if message.startswith("@"):
