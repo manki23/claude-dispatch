@@ -23,6 +23,8 @@ _BINDINGS: list[tuple[str, str, str]] = [
     ("Agents view", "k", "Kill selected agent"),
     ("Agents view", "Esc", "Back to Jobs"),
     ("Logs view", "Esc", "Back to Agents"),
+    ("Logs view", "ctrl+y", "Copy log to clipboard"),
+    ("Dispatcher chat", "@job_id:agent_type msg", "Route message to agent"),
     ("Any modal", "Esc", "Close / cancel"),
 ]
 

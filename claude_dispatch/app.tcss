@@ -6,7 +6,37 @@ Screen {
     layers: base overlay;
 }
 
-/* ── Header bar ──────────────────────────────────────────────────── */
+/* ── k9s-style header ────────────────────────────────────────────── */
+#header-keys {
+    height: 1;
+    background: $primary-darken-3;
+    color: $text;
+    padding: 0 1;
+}
+
+#header-info {
+    height: 3;
+    background: $panel-darken-1;
+    border-bottom: solid $primary-darken-2;
+}
+
+#header-context {
+    width: 1fr;
+    color: $text;
+    content-align: left middle;
+    padding: 0 1;
+}
+
+#header-logo {
+    width: 50;
+    background: $surface-darken-1;
+    color: $accent;
+    padding: 0 1;
+    content-align: right middle;
+    border-left: solid $primary-darken-2;
+}
+
+/* ── Header bar (legacy) ──────────────────────────────────────────── */
 #header-bar {
     height: 1;
     background: $primary;

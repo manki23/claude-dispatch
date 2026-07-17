@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 from textual.app import ComposeResult
@@ -111,6 +112,12 @@ class ConversationScreen(Screen[None]):
             return
         event.input.value = ""
 
+        # @ routing syntax: @job_id[:agent_type] message
+        # Routes directly to a job's agent inbox — no LLM involved.
+        if message.startswith("@"):
+            await self._handle_route(message)
+            return
+
         self._awaiting_reply = True
         self._set_activity("· thinking…")
 
@@ -140,6 +147,44 @@ class ConversationScreen(Screen[None]):
                 )
 
     # ── internal helpers ───────────────────────────────────────────
+
+    async def _handle_route(self, message: str) -> None:
+        """Route @job_id[:agent_type] message directly to a job's agent inbox."""
+        m = re.match(r"@([^\s:]+)(?::([^\s]+))?\s+(.*)", message, re.DOTALL)
+        if not m:
+            self._append_turn(
+                Turn(role="assistant", text="syntax: @<job_id>[:<agent_type>] <message>")
+            )
+            return
+
+        job_id_or_desc, agent_type, text = m.group(1), m.group(2) or "code", m.group(3).strip()
+        if not text:
+            self._append_turn(Turn(role="assistant", text="routing error: empty message"))
+            return
+
+        jobs: list[Job] = getattr(self.app, "jobs", [])
+        job = next(
+            (j for j in jobs if j.job_id == job_id_or_desc or job_id_or_desc in j.description),
+            None,
+        )
+        if job is None:
+            self._append_turn(
+                Turn(
+                    role="assistant",
+                    text=f"routing error: no job matching '{job_id_or_desc}'\n"
+                    f"known jobs: {[j.job_id for j in jobs]}",
+                )
+            )
+            return
+
+        delivered = await job.send_message(text, agent_type=agent_type)
+        status = "delivered" if delivered else "queued (agent idle — will pick up on resume)"
+        self._append_turn(
+            Turn(
+                role="assistant",
+                text=f"→ {status}: {job.job_id}:{agent_type}",
+            )
+        )
 
     def _append_turn(self, turn: Turn) -> None:
         log = self.query_one("#conv-log", RichLog)

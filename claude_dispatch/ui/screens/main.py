@@ -6,11 +6,28 @@ import time
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Label
+from textual.widgets import DataTable, Label
 
 from claude_dispatch.job import Job, JobStatus
+
+_LOGO = (
+    "[cyan]|--\ | /--\ |--\  /\  ---- /-- |  | |--- |--\[/cyan]\n"
+    "[cyan]|   || \--\ |--/ /--\  |   |   |--| |--  |--/[/cyan]\n"
+    "[cyan]|--/ |  --/ |   |  |   |   \-- |  | |--- |  \[/cyan]"
+)
+
+_KEY_HINTS = (
+    "  [bold]n[/bold] New"
+    "  [bold]m[/bold] Msg"
+    "  [bold]k[/bold] Kill"
+    "  [bold]r[/bold] Resume"
+    "  [bold]d[/bold] Chat"
+    "  [bold]c[/bold] Cost"
+    "  [bold]?[/bold] Help"
+    "  [bold]q[/bold] Quit"
+)
 
 _STATUS_ICONS: dict[str, str] = {
     JobStatus.RUNNING: "[green]●[/green]",
@@ -50,9 +67,12 @@ class MainScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label("", id="main-stats")
+            # k9s-style header: keybindings row + context/logo row
+            yield Label(_KEY_HINTS, id="header-keys")
+            with Horizontal(id="header-info"):
+                yield Label("", id="header-context")
+                yield Label(_LOGO, id="header-logo")
             yield DataTable(id="jobs-table", cursor_type="row")
-        yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
@@ -61,12 +81,19 @@ class MainScreen(Screen[None]):
         self.set_interval(1.0, self._refresh)
 
     def _refresh(self) -> None:
-        # Update header stats
+        # Update header context
         running = sum(1 for j in self.jobs if j.status == JobStatus.RUNNING)
         total_cost = sum(j.cost_usd for j in self.jobs)
-        self.query_one("#main-stats", Label).update(
-            f"[dim]Jobs running:[/dim] [bold]{running}[/bold]   "
-            f"[dim]Total cost:[/dim] [bold]${total_cost:.4f}[/bold]"
+        try:
+            cfg = self.app.config  # type: ignore[attr-defined]
+            n_repos = len(cfg.repos)
+        except AttributeError:
+            n_repos = 0
+        run_icon = "[bold green]●[/bold green]" if running else "[dim]○[/dim]"
+        self.query_one("#header-context", Label).update(
+            f"  [dim]repos:[/dim] {n_repos}"
+            f"  [dim]|[/dim]  {run_icon} [bold]{running}[/bold] running"
+            f"  [dim]|[/dim]  [dim]cost:[/dim] [bold]${total_cost:.4f}[/bold]"
         )
 
         # Update table

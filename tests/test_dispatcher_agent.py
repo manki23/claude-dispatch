@@ -43,9 +43,9 @@ def test_dispatcher_default_model_is_sonnet() -> None:
     assert AGENT_DEFAULT_MODELS[AgentType.DISPATCHER] == "claude-sonnet-4-6"
 
 
-def test_dispatcher_default_tools_is_empty() -> None:
-    """Dispatcher has no tools — context injected via system prompt only."""
-    assert AGENT_DEFAULT_TOOLS[AgentType.DISPATCHER] == []
+def test_dispatcher_default_tools_read_only() -> None:
+    """Dispatcher is read-only — only Read tool to inspect files, no execution."""
+    assert AGENT_DEFAULT_TOOLS[AgentType.DISPATCHER] == ["Read"]
 
 
 # ── build_dispatcher_system_prompt ────────────────────────────────────────────
@@ -96,11 +96,11 @@ def test_context_running_agent_includes_recent_logs() -> None:
     )
     job.agents = [agent]
     prompt = build_dispatcher_system_prompt([job])
-    # Last 3 log lines included, first line excluded
+    # Last 5 log lines included (dispatcher shows up to 5 for context)
     assert "line4" in prompt
     assert "line3" in prompt
     assert "line2" in prompt
-    assert "line1" not in prompt
+    assert "line1" in prompt
 
 
 def test_context_done_agent_excludes_logs() -> None:
