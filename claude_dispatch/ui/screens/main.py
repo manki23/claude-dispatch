@@ -398,7 +398,6 @@ class MainScreen(Screen[None]):
         self._refresh()
         from claude_dispatch.ui.screens.agents import AgentsScreen
 
-        self.app.pop_to_main()  # type: ignore[attr-defined]
         self.app.push_screen(AgentsScreen(job=job))
 
     def action_dispatcher(self) -> None:
