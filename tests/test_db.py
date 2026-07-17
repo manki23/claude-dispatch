@@ -107,7 +107,7 @@ async def test_list_agents_row_shape(db: Path) -> None:
     await upsert_session("job1", "plan", "sess-plan", status="done", cost_usd=0.003, db_path=db)
     agents = await list_agents("job1", db_path=db)
     row = agents[0]
-    assert set(row.keys()) == {"agent_type", "session_id", "status", "cost_usd", "created_at", "updated_at"}
+    assert set(row.keys()) == {"agent_type", "session_id", "status", "cost_usd", "created_at", "updated_at", "pid", "log_path"}
     assert row["agent_type"] == "plan"
     assert row["session_id"] == "sess-plan"
     assert row["status"] == "done"

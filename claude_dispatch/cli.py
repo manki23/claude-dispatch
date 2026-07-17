@@ -43,7 +43,8 @@ def run(description: str) -> None:
     from claude_dispatch.job import Job, JobStatus
 
     config = load_config()
-    job = Job(description=description, config=config)
+    # CLI headless run: in-process so logs stream live to stdout.
+    job = Job(description=description, config=config, _use_workers=False)
 
     click.echo(f"[claude-dispatch] job {job.job_id} started: {description!r}")
 

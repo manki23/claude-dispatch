@@ -52,6 +52,7 @@ async def test_db_upsert_persists_session(tmp_path: Path, db: Path) -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
 
     agent = Agent(
         spec=AgentSpec(type=AgentType.CODE, cwd="/tmp"),
@@ -82,6 +83,7 @@ async def test_db_upsert_skips_if_no_session_id() -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     agent = Agent(
         spec=AgentSpec(type=AgentType.CODE, cwd="/tmp"),
         job_id=job.job_id,
@@ -101,6 +103,7 @@ async def test_db_upsert_swallows_exceptions() -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     agent = Agent(
         spec=AgentSpec(type=AgentType.CODE, cwd="/tmp"),
         job_id=job.job_id,
@@ -121,6 +124,7 @@ async def test_db_resume_id_returns_existing_session() -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     agent = Agent(
         spec=AgentSpec(type=AgentType.PLAN, cwd="/tmp"),
         job_id=job.job_id,
@@ -139,6 +143,7 @@ async def test_db_resume_id_returns_none_if_not_found() -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     agent = Agent(
         spec=AgentSpec(type=AgentType.PLAN, cwd="/tmp"),
         job_id=job.job_id,
@@ -157,6 +162,7 @@ async def test_db_resume_id_swallows_exceptions() -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     agent = Agent(
         spec=AgentSpec(type=AgentType.PLAN, cwd="/tmp"),
         job_id=job.job_id,
@@ -176,6 +182,7 @@ async def test_db_resume_id_swallows_exceptions() -> None:
 async def test_plan_phase_calls_upsert_on_success(tmp_path: Path) -> None:
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     job._workdir = tmp_path
 
     plan_content = yaml.dump({"summary": "s", "agents": [{"type": "test", "cwd": str(tmp_path)}]})
@@ -203,6 +210,7 @@ async def test_plan_phase_passes_resume_id_from_db(tmp_path: Path) -> None:
     """If DB has a prior session for plan, it must be passed as resume_session_id."""
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     job._workdir = tmp_path
 
     plan_content = yaml.dump({"summary": "s", "agents": [{"type": "test", "cwd": str(tmp_path)}]})
@@ -236,6 +244,7 @@ async def test_execute_phase_upserts_all_agents(tmp_path: Path) -> None:
 
     job = make_job()
     job.db_enabled = True
+    job._use_workers = False
     job._workdir = tmp_path
 
     upserted: list[dict] = []
