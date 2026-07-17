@@ -21,6 +21,7 @@ _LOGO = (
     "[cyan]|___/|___\\___/|_|/_/ \\_\\_|  \\___|_||_|___|_|\\_\\[/cyan]"
 )
 
+
 # Shortcut hints — two columns, one pair per row (k9s style)
 def _key(k: str) -> str:
     return f"[dim]<[/dim][bold]{k}[/bold][dim]>[/dim]"
@@ -72,9 +73,9 @@ class MainScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         # k9s-style header: one horizontal band split into 3 columns
         with Horizontal(id="dispatch-header"):
-            yield Label("", id="header-context")   # left: version/repos/jobs/cost
+            yield Label("", id="header-context")  # left: version/repos/jobs/cost
             yield Label(_KEY_HINTS, id="header-keys")  # middle: shortcuts in 2 cols
-            yield Label(_LOGO, id="header-logo")   # right: DISPATCHER logo
+            yield Label(_LOGO, id="header-logo")  # right: DISPATCHER logo
         yield DataTable(id="jobs-table", cursor_type="row")
 
     def on_mount(self) -> None:
