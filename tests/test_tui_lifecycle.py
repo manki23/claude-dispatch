@@ -229,7 +229,7 @@ async def test_resume_job_already_loaded(mock_app) -> None:
         screen = mock_app.screen
         existing_job = mock_app.jobs[0]
         real_push = screen.app.push_screen
-        screen.app.push_screen = make_push_screen_stub(existing_job.job_id, passthrough=real_push)
+        screen.app.push_screen = make_push_screen_stub([existing_job.job_id], passthrough=real_push)
 
         # _do_resume is run in a worker; schedule it directly on the event loop
         def run_worker_direct(coro, **kw):
@@ -270,7 +270,7 @@ async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
 
         screen = mock_app.screen
         real_push = screen.app.push_screen
-        screen.app.push_screen = make_push_screen_stub("db-job-1", passthrough=real_push)
+        screen.app.push_screen = make_push_screen_stub(["db-job-1"], passthrough=real_push)
 
         def run_worker_direct(coro, **kw):
             asyncio.ensure_future(coro)
