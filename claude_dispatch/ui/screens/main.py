@@ -6,27 +6,32 @@ import time
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import DataTable, Label
 
 from claude_dispatch.job import Job, JobStatus
 
+# ASCII logo — 4 lines, readable block font for "DISPATCHER"
+# Each letter ~5 chars wide, uses only |  /  \  -  _  chars
 _LOGO = (
-    "[cyan]|--\ | /--\ |--\  /\  ---- /-- |  | |--- |--\[/cyan]\n"
-    "[cyan]|   || \--\ |--/ /--\  |   |   |--| |--  |--/[/cyan]\n"
-    "[cyan]|--/ |  --/ |   |  |   |   \-- |  | |--- |  \[/cyan]"
+    "[cyan] ___ ___ ___ ___  _  _____  ___ _  _ ___ ___[/cyan]\n"
+    "[cyan]|   \\_  _/ __|| _ \\/_\\_   _|/ __|| || | __| _ \\[/cyan]\n"
+    "[cyan]| |) || |\\___ \\|  _/ _ \\| | | (__ | __ | _||   /[/cyan]\n"
+    "[cyan]|___/|___\\___/|_|/_/ \\_\\_|  \\___|_||_|___|_|\\_\\[/cyan]"
 )
 
+
+# Shortcut hints — two columns, one pair per row (k9s style)
+def _key(k: str) -> str:
+    return f"[dim]<[/dim][bold]{k}[/bold][dim]>[/dim]"
+
+
 _KEY_HINTS = (
-    "  [bold]n[/bold] New"
-    "  [bold]m[/bold] Msg"
-    "  [bold]k[/bold] Kill"
-    "  [bold]r[/bold] Resume"
-    "  [bold]d[/bold] Chat"
-    "  [bold]c[/bold] Cost"
-    "  [bold]?[/bold] Help"
-    "  [bold]q[/bold] Quit"
+    f"  {_key('n')}  New job       {_key('d')}  Chat\n"
+    f"  {_key('m')}  Msg agent     {_key('c')}  Cost\n"
+    f"  {_key('k')}  Kill job      {_key('?')}  Help\n"
+    f"  {_key('r')}  Resume        {_key('q')}  Quit"
 )
 
 _STATUS_ICONS: dict[str, str] = {
@@ -66,13 +71,12 @@ class MainScreen(Screen[None]):
         self.jobs = jobs
 
     def compose(self) -> ComposeResult:
-        with Vertical():
-            # k9s-style header: keybindings row + context/logo row
-            yield Label(_KEY_HINTS, id="header-keys")
-            with Horizontal(id="header-info"):
-                yield Label("", id="header-context")
-                yield Label(_LOGO, id="header-logo")
-            yield DataTable(id="jobs-table", cursor_type="row")
+        # k9s-style header: one horizontal band split into 3 columns
+        with Horizontal(id="dispatch-header"):
+            yield Label("", id="header-context")  # left: version/repos/jobs/cost
+            yield Label(_KEY_HINTS, id="header-keys")  # middle: shortcuts in 2 cols
+            yield Label(_LOGO, id="header-logo")  # right: DISPATCHER logo
+        yield DataTable(id="jobs-table", cursor_type="row")
 
     def on_mount(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
@@ -81,19 +85,24 @@ class MainScreen(Screen[None]):
         self.set_interval(1.0, self._refresh)
 
     def _refresh(self) -> None:
-        # Update header context
+        # Update header context (4 lines to match logo height)
         running = sum(1 for j in self.jobs if j.status == JobStatus.RUNNING)
+        total_jobs = len(self.jobs)
         total_cost = sum(j.cost_usd for j in self.jobs)
         try:
             cfg = self.app.config  # type: ignore[attr-defined]
             n_repos = len(cfg.repos)
         except AttributeError:
             n_repos = 0
-        run_icon = "[bold green]●[/bold green]" if running else "[dim]○[/dim]"
+        from claude_dispatch import __version__
+
+        run_color = "green" if running else "dim"
+        jobs_line = f"[{run_color}]{running}[/{run_color}] running / {total_jobs} total"
         self.query_one("#header-context", Label).update(
-            f"  [dim]repos:[/dim] {n_repos}"
-            f"  [dim]|[/dim]  {run_icon} [bold]{running}[/bold] running"
-            f"  [dim]|[/dim]  [dim]cost:[/dim] [bold]${total_cost:.4f}[/bold]"
+            f" [dim]Version:[/dim] {__version__}\n"
+            f" [dim]Repos:[/dim]   {n_repos}\n"
+            f" [dim]Jobs:[/dim]    {jobs_line}\n"
+            f" [dim]Cost:[/dim]    [bold]${total_cost:.4f}[/bold]"
         )
 
         # Update table
@@ -194,16 +203,23 @@ class MainScreen(Screen[None]):
             self._refresh()
 
     def action_resume_job(self) -> None:
-        from claude_dispatch.ui.modals.prompt import PromptModal
+        """Open a job-picker showing all past jobs from DB."""
+        self.app.run_worker(self._open_resume_picker(), exclusive=False)
+
+    async def _open_resume_picker(self) -> None:
+        from claude_dispatch.db import list_jobs
+        from claude_dispatch.ui.modals.resume import ResumeModal
+
+        past_jobs = await list_jobs()
+        if not past_jobs:
+            self.notify("No past jobs found in DB", severity="warning")
+            return
 
         def on_dismiss(job_id: str | None) -> None:
             if job_id:
                 self.app.run_worker(self._do_resume(job_id), exclusive=False)
 
-        self.app.push_screen(
-            PromptModal(label="Resume job-id >", placeholder="e.g. abc123"),
-            callback=on_dismiss,
-        )
+        self.app.push_screen(ResumeModal(jobs=past_jobs), callback=on_dismiss)
 
     async def _do_resume(self, job_id: str) -> None:
         """Worker body: reconstruct job from DB and push AgentsScreen."""

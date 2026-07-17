@@ -244,10 +244,9 @@ async def test_resume_job_already_loaded(mock_app) -> None:
 
 
 async def test_resume_job_unknown_id_shows_notification(mock_app) -> None:
-    """Unknown job_id → notify called with error severity."""
+    """Empty DB → notify 'No past jobs' without pushing any screen."""
     async with mock_app.run_test() as pilot:
         screen = mock_app.screen
-        screen.app.push_screen = make_push_screen_stub("nonexistent-id")
 
         notify_calls = []
         screen.notify = lambda msg, **kw: notify_calls.append((msg, kw))
@@ -261,7 +260,7 @@ async def test_resume_job_unknown_id_shows_notification(mock_app) -> None:
             screen.action_resume_job()
             await pilot.pause(0.2)
 
-    assert any("nonexistent-id" in c[0] for c in notify_calls)
+    assert any("No past jobs" in c[0] for c in notify_calls)
 
 
 async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
@@ -313,19 +312,39 @@ async def test_resume_job_from_db_reconstructs_job(mock_app) -> None:
 
 
 async def test_resume_job_cancelled_modal_does_nothing(mock_app) -> None:
-    """Cancelling the modal (None) → no job added, no screen push."""
-    async with mock_app.run_test():
+    """Cancelling ResumeModal (None) → no job added, no _do_resume worker."""
+    async with mock_app.run_test() as pilot:
         from claude_dispatch.ui.screens.main import MainScreen
 
         screen = mock_app.screen
         initial_count = len(screen.jobs)
-        screen.app.push_screen = make_push_screen_stub(None)
 
-        worker_calls = []
-        screen.app.run_worker = lambda *a, **kw: worker_calls.append(True)
+        # _open_resume_picker runs in a worker; run it directly so we control modal dismiss.
+        def run_worker_direct(coro, **kw):
+            asyncio.ensure_future(coro)
 
-        screen.action_resume_job()
+        screen.app.run_worker = run_worker_direct
+
+        fake_jobs = [
+            {
+                "job_id": "old-job-1",
+                "description": "some old task",
+                "status": "done",
+                "cost_usd": 0.01,
+                "updated_at": "2026-01-01",
+            }
+        ]
+
+        # push_screen stub immediately calls callback(None) → simulates Esc in ResumeModal
+        def push_screen_cancel(modal, callback=None, **kw):
+            if callback:
+                callback(None)
+
+        screen.app.push_screen = push_screen_cancel
+
+        with patch("claude_dispatch.db.list_jobs", AsyncMock(return_value=fake_jobs)):
+            screen.action_resume_job()
+            await pilot.pause(0.2)
 
         assert len(screen.jobs) == initial_count
-        assert worker_calls == []
         assert isinstance(mock_app.screen, MainScreen)

@@ -8,11 +8,87 @@ from collections.abc import Callable
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.events import Key, Paste
 from textual.screen import Screen
-from textual.widgets import Footer, Input, Label, RichLog
+from textual.widgets import Footer, Label, RichLog, TextArea
 
 from claude_dispatch.agent import Agent, ConversationThread, Turn
 from claude_dispatch.job import Job
+
+_PASTE_PLACEHOLDER = "[Pasted text #{n} +{extra} lines]"
+_paste_counter: int = 0
+
+
+class ChatInput(TextArea):
+    """Single-line-looking input that wraps long text and handles multi-line paste.
+
+    - Enter       → submit (fire Submitted message)
+    - Shift+Enter → insert newline
+    - Multi-line paste → stores full text in _paste_buffer, shows preview placeholder
+    """
+
+    BINDINGS = []  # no extra bindings — enter handled via on_key
+
+    class Submitted(TextArea.Changed):
+        """Fired when the user presses Enter to send."""
+
+    def __init__(self, placeholder: str = "") -> None:
+        super().__init__("", soft_wrap=True, show_line_numbers=False, id="conv-input")
+        self._placeholder = placeholder
+        self._paste_buffer: str | None = None  # full multi-line text if paste previewed
+
+    def on_key(self, event: Key) -> None:
+        """Intercept Enter (submit) and Shift+Enter (newline) before TextArea handles them."""
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.action_submit_message()
+        elif event.key == "shift+enter":
+            event.prevent_default()
+            event.stop()
+            self.action_insert_newline()
+
+    async def on_paste(self, event: Paste) -> None:
+        """Intercept paste: if multi-line, show preview placeholder."""
+        event.stop()
+        global _paste_counter
+        text = event.text
+        lines = text.splitlines()
+        if len(lines) <= 1:
+            # Single line paste — insert normally.
+            self._paste_buffer = None
+            await self._insert_text_at_cursor(text)
+            return
+
+        # Multi-line paste: store full text, show compact preview.
+        _paste_counter += 1
+        self._paste_buffer = text
+        extra = len(lines) - 1
+        preview = f"[Pasted text #{_paste_counter} +{extra} lines]"
+        self.clear()
+        await self._insert_text_at_cursor(preview)
+
+    async def _insert_text_at_cursor(self, text: str) -> None:
+        """Insert text at the current cursor position."""
+        self.insert(text)
+
+    def action_submit_message(self) -> None:
+        """Emit Submitted with the full text (paste buffer or typed text)."""
+        text = self._paste_buffer if self._paste_buffer is not None else self.text
+        text = text.strip()
+        if not text:
+            return
+        self.post_message(self.Submitted(self))
+
+    def action_insert_newline(self) -> None:
+        self.insert("\n")
+
+    def get_text_and_clear(self) -> str:
+        """Return pending text (paste buffer or typed) and reset state."""
+        text = self._paste_buffer if self._paste_buffer is not None else self.text
+        self._paste_buffer = None
+        self.clear()
+        return text.strip()
 
 
 class ConversationScreen(Screen[None]):
@@ -60,7 +136,7 @@ class ConversationScreen(Screen[None]):
             )
             yield RichLog(id="conv-log", highlight=False, markup=True, wrap=True)
             yield Label("", id="conv-activity")
-            yield Input(placeholder="type a message… (Enter to send)", id="conv-input")
+            yield ChatInput(placeholder="type a message… (Enter to send)")
         yield Footer()
 
     DEFAULT_CSS = """
@@ -68,6 +144,10 @@ class ConversationScreen(Screen[None]):
         height: 1;
         color: $text-muted;
         padding: 0 1;
+    }
+    #conv-input {
+        height: auto;
+        max-height: 6;
     }
     """
 
@@ -100,17 +180,17 @@ class ConversationScreen(Screen[None]):
         self._agent.on_log = _activity_log
 
         # Focus input immediately.
-        self.query_one("#conv-input", Input).focus()
+        self.query_one("#conv-input", ChatInput).focus()
 
     def on_unmount(self) -> None:
         self._thread.on_reply = self._prev_on_reply
         self._agent.on_log = self._prev_on_agent_log
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        message = event.value.strip()
+    async def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
+        chat_input = self.query_one("#conv-input", ChatInput)
+        message = chat_input.get_text_and_clear()
         if not message:
             return
-        event.input.value = ""
 
         # @ routing syntax: @job_id[:agent_type] message
         # Routes directly to a job's agent inbox — no LLM involved.
