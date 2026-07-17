@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from claude_code_sdk.types import AssistantMessage, ResultMessage, TextBlock
 
 from claude_dispatch.agent import AgentStatus
 from claude_dispatch.config import Config, Defaults
-from claude_dispatch.job import Job, JobPhase, JobStatus
-from claude_code_sdk.types import AssistantMessage, ResultMessage, TextBlock
+from claude_dispatch.job import Job, JobPhase
 
 
 def make_job(description: str = "Add unit tests", plan_timeout_s: int = 10) -> Job:

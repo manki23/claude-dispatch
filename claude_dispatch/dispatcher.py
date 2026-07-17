@@ -15,8 +15,8 @@ from claude_dispatch.job import Job
 
 async def _load_jobs_from_db(config: Config) -> list[Job]:
     """Reconstruct Job+Agent objects from the DB for all previously-run jobs."""
-    from claude_dispatch.db import list_agents, list_jobs
     from claude_dispatch.agent import AgentSpec, AgentType
+    from claude_dispatch.db import list_agents, list_jobs
     from claude_dispatch.job import Job, JobStatus
 
     job_rows = await list_jobs()

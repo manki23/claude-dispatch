@@ -74,7 +74,8 @@ async def upsert_session(
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """
-            INSERT INTO sessions (job_id, agent_type, session_id, description, instructions, status, cost_usd)
+            INSERT INTO sessions
+                (job_id, agent_type, session_id, description, instructions, status, cost_usd)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id, agent_type) DO UPDATE SET
                 session_id   = excluded.session_id,
@@ -139,7 +140,8 @@ async def dequeue_messages(
     """Return and mark-consumed all pending messages for this agent."""
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
-            "SELECT id, text FROM messages WHERE job_id=? AND agent_type=? AND consumed=0 ORDER BY id",
+            "SELECT id, text FROM messages"
+            " WHERE job_id=? AND agent_type=? AND consumed=0 ORDER BY id",
             (job_id, agent_type),
         ) as cursor:
             rows = await cursor.fetchall()
@@ -173,7 +175,8 @@ async def list_jobs(db_path: Path = DB_FILE) -> list[dict]:
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
             """
-            SELECT job_id, description, instructions, status, SUM(cost_usd) as total_cost, MAX(updated_at)
+            SELECT job_id, description, instructions, status,
+                   SUM(cost_usd) as total_cost, MAX(updated_at)
             FROM sessions
             GROUP BY job_id
             ORDER BY MAX(updated_at) DESC

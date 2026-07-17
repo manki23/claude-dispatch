@@ -207,7 +207,9 @@ async def test_message_agent_calls_send_message(agents_app) -> None:
         screen = app.screen
         agent = job.agents[0]
 
-        screen.app.push_screen = lambda s, callback=None, **kw: callback and callback("add more context")
+        screen.app.push_screen = (
+            lambda s, callback=None, **kw: callback and callback("add more context")
+        )
         job.send_message = AsyncMock(return_value=True)
 
         worker_coros = []

@@ -5,7 +5,6 @@ from __future__ import annotations
 from claude_dispatch.agent import AgentStatus
 from claude_dispatch.job import Job, JobStatus
 
-
 _DISPATCHER_PREAMBLE = """\
 You are the dispatcher for claude-dispatch, a tool that orchestrates parallel Claude Code sessions.
 You have read-only visibility into all running and completed jobs.

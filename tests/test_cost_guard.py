@@ -7,13 +7,12 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from claude_code_sdk.types import ResultMessage
 
 from claude_dispatch.agent import AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config, CostLimits
 from claude_dispatch.cost_guard import CostGuard, CostLimitExceeded
 from claude_dispatch.job import Job
-from claude_code_sdk.types import ResultMessage
-
 
 # ── CostGuard unit tests ──────────────────────────────────────────────────────
 
@@ -122,8 +121,12 @@ def test_make_on_cost_raises_on_job_breach() -> None:
     guard = job._make_guard()
 
     # Two agents, combined cost over limit
-    a1 = Agent(spec=AgentSpec(type=AgentType.CODE, cwd="/tmp"), job_id=job.job_id, agent_id="j-code")
-    a2 = Agent(spec=AgentSpec(type=AgentType.TEST, cwd="/tmp"), job_id=job.job_id, agent_id="j-test")
+    a1 = Agent(
+        spec=AgentSpec(type=AgentType.CODE, cwd="/tmp"), job_id=job.job_id, agent_id="j-code"
+    )
+    a2 = Agent(
+        spec=AgentSpec(type=AgentType.TEST, cwd="/tmp"), job_id=job.job_id, agent_id="j-test"
+    )
     a1.cost_usd = 0.6
     a2.cost_usd = 0.6
     job.agents.extend([a1, a2])

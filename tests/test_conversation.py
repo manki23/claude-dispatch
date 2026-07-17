@@ -281,7 +281,6 @@ async def test_conversation_screen_renders_existing_turns() -> None:
         await pilot.pause(0.1)
         screen = app.screen
         assert isinstance(screen, ConversationScreen)
-        log = screen.query_one("#conv-log")
         # Both turns rendered — check thread size matches
         assert len(thread.turns) == 2
 

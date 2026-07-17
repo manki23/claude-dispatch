@@ -9,7 +9,6 @@ from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
 from claude_dispatch.job import Job, JobPhase, JobStatus
 
-
 # ── action_message_job: notify when no job selected ───────────────────────────
 
 
@@ -44,7 +43,6 @@ async def test_resume_job_handles_unknown_status_gracefully(tmp_path) -> None:
     """Unknown status strings in DB fall back to DONE without raising."""
     import aiosqlite
 
-    from claude_dispatch.config import DB_FILE
     from claude_dispatch.db import init_db
 
     db_file = tmp_path / "sessions.db"

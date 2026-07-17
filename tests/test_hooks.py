@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import stat
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
+from claude_code_sdk.types import ResultMessage
 
+from claude_dispatch.config import Config
 from claude_dispatch.hooks import (
     POST_AGENT_DONE,
     POST_JOB_DONE,
@@ -23,9 +24,6 @@ from claude_dispatch.hooks import (
     pre_job_start_payload,
 )
 from claude_dispatch.job import Job
-from claude_dispatch.config import Config
-from claude_code_sdk.types import ResultMessage
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

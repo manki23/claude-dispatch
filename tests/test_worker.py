@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-import os
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -14,7 +12,6 @@ from claude_dispatch.agent import AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
 from claude_dispatch.job import Job
 
-
 # ── worker subprocess round-trip ──────────────────────────────────────────────
 
 
@@ -22,7 +19,6 @@ from claude_dispatch.job import Job
 async def test_worker_subprocess_writes_log_and_updates_db(tmp_path: Path) -> None:
     """Spawned worker writes logs to file and updates DB status."""
     from claude_dispatch.db import init_db, list_agents, upsert_session
-    from claude_dispatch.config import DB_FILE
 
     db_path = tmp_path / "test.db"
     log_path = tmp_path / "plan.log"
@@ -34,8 +30,9 @@ async def test_worker_subprocess_writes_log_and_updates_db(tmp_path: Path) -> No
         "job-w1", "plan", "", description="test", status="running", db_path=db_path
     )
 
-    from claude_dispatch.worker import _run
     import types
+
+    from claude_dispatch.worker import _run
 
     args = types.SimpleNamespace(
         job_id="job-w1",
@@ -81,7 +78,7 @@ async def test_worker_subprocess_writes_log_and_updates_db(tmp_path: Path) -> No
 @pytest.mark.asyncio
 async def test_enqueue_dequeue_messages(tmp_path: Path) -> None:
     """Messages enqueued by TUI are returned once by dequeue and then consumed."""
-    from claude_dispatch.db import DB_FILE, enqueue_message, dequeue_messages, init_db
+    from claude_dispatch.db import dequeue_messages, enqueue_message, init_db
 
     db_path = tmp_path / "msg.db"
     await init_db(db_path)
@@ -103,8 +100,8 @@ async def test_enqueue_dequeue_messages(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_dispatcher_loads_jobs_from_db_on_restart() -> None:
     """DispatcherApp with no explicit jobs reads state from DB on mount."""
-    from claude_dispatch.dispatcher import DispatcherApp, _load_jobs_from_db
-    from claude_dispatch.db import upsert_session, init_db, DB_FILE
+    from claude_dispatch.db import init_db, upsert_session
+    from claude_dispatch.dispatcher import _load_jobs_from_db
 
     await init_db()
     await upsert_session(
@@ -126,8 +123,8 @@ async def test_dispatcher_loads_jobs_from_db_on_restart() -> None:
 @pytest.mark.asyncio
 async def test_dead_pid_corrected_to_failed_on_load() -> None:
     """If a stored PID is dead, _load_jobs_from_db marks agent as failed."""
+    from claude_dispatch.db import init_db, upsert_session, upsert_worker_meta
     from claude_dispatch.dispatcher import _load_jobs_from_db
-    from claude_dispatch.db import init_db, upsert_session, upsert_worker_meta, DB_FILE
 
     await init_db()
 

@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import yaml
+from claude_code_sdk.types import ResultMessage
 
 from claude_dispatch.agent import AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config
-from claude_dispatch.db import get_session, init_db, upsert_session
+from claude_dispatch.db import init_db
 from claude_dispatch.job import Job
-from claude_code_sdk.types import ResultMessage
 
 
 def result_msg(session_id: str = "sess-1", is_error: bool = False) -> ResultMessage:

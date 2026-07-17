@@ -7,14 +7,13 @@ so tests simulate the callback being invoked directly.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from claude_dispatch.dispatcher import DispatcherApp
 from claude_dispatch.job import JobStatus
 from claude_dispatch.mock import make_mock_config, make_mock_jobs
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

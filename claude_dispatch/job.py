@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
-from claude_dispatch.config import Config, DB_FILE
+from claude_dispatch.config import DB_FILE, Config
 from claude_dispatch.cost_guard import CostGuard, CostLimitExceeded
 from claude_dispatch.db import get_session, list_agents, upsert_session
 from claude_dispatch.hooks import (

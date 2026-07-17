@@ -84,8 +84,6 @@ async def _run(args: argparse.Namespace) -> None:
 
         while True:
             # Single SDK turn
-            from claude_dispatch.agent import AgentStatus
-            from claude_dispatch.prompts import PLAN_SYSTEM_PROMPT, EXECUTION_SYSTEM_PROMPT
 
             sys_prompt = args.system_prompt or None
             await agent._run_turn(current_prompt, current_resume, sys_prompt)

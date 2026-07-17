@@ -8,12 +8,11 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from claude_code_sdk.types import ResultMessage
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
 from claude_dispatch.config import Config, Defaults
 from claude_dispatch.job import Job
-from claude_code_sdk.types import ResultMessage
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

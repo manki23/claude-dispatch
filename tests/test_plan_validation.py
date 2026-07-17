@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from claude_code_sdk.types import ResultMessage
 
 from claude_dispatch.agent import AgentSpec, AgentType
 from claude_dispatch.config import Config
@@ -18,8 +19,6 @@ from claude_dispatch.plan import (
     parse_plan,
     validate_plan,
 )
-from claude_code_sdk.types import ResultMessage
-
 
 # ── parse_plan: happy path ────────────────────────────────────────────────────
 

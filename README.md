@@ -12,9 +12,9 @@ Running multiple Claude Code sessions today is painful:
 - Manually juggling terminal tabs → no coordination, no shared context
 - Context compaction kills history in long sessions
 - Knowledge from one session never reaches another
-- Scribe work (notes, docs, tickets) is scattered across sessions
+- Closing your terminal kills all running agents
 
-claude-dispatch gives each task its own focused agent hierarchy, routes context between them, and lets you navigate everything from one place.
+claude-dispatch gives each task its own focused agent hierarchy, runs each agent as an **independent background process** (survives TUI close), persists all state to SQLite, and lets you navigate everything from one place — exactly like k9s for Kubernetes, but for Claude sessions.
 
 ---
 
@@ -35,9 +35,11 @@ Dispatcher  (you — control plane, k9s-style TUI)
       └── draft   agent      sonnet — aggregates into final document
 ```
 
-- **Dispatcher** = control plane. Navigate jobs and agents with keyboard shortcuts. Send messages to jobs. Check costs.
+- **Dispatcher** = control plane (observer only). Navigate jobs and agents with keyboard shortcuts. Send messages. Check costs. **Closing the TUI does not kill agents.**
 - **Job** = one human task. Self-organizing: the `plan` agent decides what agents and worktrees are needed.
-- **Agent** = scoped Claude session. Runs with `bypassPermissions`, locked to its `cwd` and `allowedTools`.
+- **Agent** = scoped Claude session running as an **independent subprocess**. Runs with `bypassPermissions`, locked to its `cwd` and `allowedTools`. Survives TUI restarts. Resumable externally via `claude --resume {session_id}`.
+
+State is persisted in `~/.claude-dispatch/dispatch.db` (SQLite). Reopening dispatch reconstructs all jobs and agents from the DB automatically.
 
 ---
 
@@ -75,12 +77,48 @@ This is more restrictive than default Claude Code (which has full filesystem acc
 | `↑↓` | Navigate list |
 | `Enter` | Drill into Job or Agent |
 | `Esc` | Go back one level |
-| `n` | New Job (opens prompt bar) |
+| `n` | New Job (two-step: full task description → short display name) |
 | `m` | Message selected Job |
 | `k` | Kill selected Job or Agent |
 | `r` | Resume Job from history |
 | `c` | Cost breakdown |
 | `?` | Help / keybindings |
+
+---
+
+## State persistence
+
+claude-dispatch is an **observer**, not an orchestrator. Closing it does not kill your agents.
+
+```
+~/.claude-dispatch/
+├── dispatch.db           # SQLite — jobs, agents, messages, session IDs
+└── jobs/
+    └── {job_id}/
+        ├── plan.log      # live log for the plan agent
+        ├── code.log      # live log for the code agent
+        └── ...
+```
+
+On restart, all jobs are reconstructed from the DB. Agents that were `RUNNING` with a dead PID are automatically corrected to `FAILED`. Agents that are still running continue independently — dispatch just re-attaches.
+
+To resume an agent session outside of dispatch:
+
+```bash
+claude --resume <session_id>   # session_id shown in the agents table (SESSION column)
+```
+
+---
+
+## Headless mode
+
+Run a job without the TUI — logs stream live to stdout:
+
+```bash
+claude-dispatch run "Fix the auth bug in services/auth/handler.py"
+```
+
+Exits 0 on success, 1 on failure. Cost is printed on completion. Useful for scripting or CI.
 
 ---
 

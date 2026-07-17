@@ -3,24 +3,23 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
+from claude_code_sdk.types import (
+    AssistantMessage,
+    ResultMessage,
+    TextBlock,
+    ToolUseBlock,
+)
 
 from claude_dispatch.agent import (
+    AGENT_DEFAULT_MODELS,
+    AGENT_DEFAULT_TOOLS,
     Agent,
     AgentSpec,
     AgentStatus,
     AgentType,
-    AGENT_DEFAULT_MODELS,
-    AGENT_DEFAULT_TOOLS,
-)
-from claude_code_sdk.types import (
-    AssistantMessage,
-    HookContext,
-    ResultMessage,
-    TextBlock,
-    ToolUseBlock,
 )
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 import pytest
@@ -18,7 +17,7 @@ from claude_dispatch.agent import (
 )
 from claude_dispatch.config import Config
 from claude_dispatch.dispatcher_context import build_dispatcher_system_prompt
-from claude_dispatch.job import Job, JobPhase, JobStatus
+from claude_dispatch.job import Job, JobStatus
 
 
 def result_msg(session_id: str = "s1") -> ResultMessage:
