@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -49,10 +50,15 @@ class LogsScreen(Screen):
     def on_mount(self) -> None:
         log = self.query_one("#log-view", RichLog)
 
-        # Render lines that already exist
-        for line in self._agent.log_lines:
+        # Render existing lines — from log file (subprocess) or in-memory list
+        if self._agent.log_path:
+            lp = Path(self._agent.log_path)
+            initial_lines = lp.read_text().splitlines() if lp.exists() else []
+        else:
+            initial_lines = self._agent.log_lines
+        for line in initial_lines:
             log.write(line)
-        self._rendered_count = len(self._agent.log_lines)
+        self._rendered_count = len(initial_lines)
 
         # Direct callback: write new lines immediately as they arrive
         self._prev_on_log = self._agent.on_log
@@ -93,11 +99,20 @@ class LogsScreen(Screen):
         )
 
     def _poll_new_lines(self) -> None:
-        """Append any log_lines that arrived before the live callback was wired."""
-        new_lines = self._agent.log_lines[self._rendered_count :]
-        for line in new_lines:
-            self._append_line(line)
-        self._rendered_count += len(new_lines)
+        """Append new log lines — from file (subprocess agent) or in-memory list."""
+        if self._agent.log_path:
+            lp = Path(self._agent.log_path)
+            if lp.exists():
+                all_lines = lp.read_text().splitlines()
+                new_lines = all_lines[self._rendered_count :]
+                for line in new_lines:
+                    self._append_line(line)
+                self._rendered_count += len(new_lines)
+        else:
+            new_lines = self._agent.log_lines[self._rendered_count :]
+            for line in new_lines:
+                self._append_line(line)
+            self._rendered_count += len(new_lines)
 
     # ── actions ───────────────────────────────────────────────────
 

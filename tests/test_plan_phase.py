@@ -17,7 +17,7 @@ from claude_code_sdk.types import AssistantMessage, ResultMessage, TextBlock
 
 def make_job(description: str = "Add unit tests", plan_timeout_s: int = 10) -> Job:
     config = Config(defaults=Defaults(plan_timeout_s=plan_timeout_s))
-    return Job(description=description, config=config)
+    return Job(description=description, config=config, db_enabled=False)
 
 
 def _result_msg(session_id: str = "sess-plan", is_error: bool = False) -> ResultMessage:

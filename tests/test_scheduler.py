@@ -20,7 +20,7 @@ from claude_code_sdk.types import ResultMessage
 
 def make_job(max_parallel: int = 5) -> Job:
     config = Config(defaults=Defaults(max_parallel_agents=max_parallel))
-    return Job(description="Test job", config=config)
+    return Job(description="Test job", config=config, db_enabled=False)
 
 
 def make_agent(agent_type: AgentType, depends_on: list[str] | None = None) -> Agent:

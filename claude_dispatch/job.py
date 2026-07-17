@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -12,9 +13,9 @@ from enum import Enum
 from pathlib import Path
 
 from claude_dispatch.agent import Agent, AgentSpec, AgentStatus, AgentType
-from claude_dispatch.config import Config
+from claude_dispatch.config import Config, DB_FILE
 from claude_dispatch.cost_guard import CostGuard, CostLimitExceeded
-from claude_dispatch.db import get_session, upsert_session
+from claude_dispatch.db import get_session, list_agents, upsert_session
 from claude_dispatch.hooks import (
     POST_AGENT_DONE,
     POST_JOB_DONE,
@@ -64,6 +65,7 @@ class Job:
     cost_usd: float = 0.0
     created_at: float = field(default_factory=time.time)
     db_enabled: bool = True  # set False in tests that don't want real DB I/O
+    _use_workers: bool = True  # set False to run agents in-process (tests, CLI headless)
     hooks_dir: Path | None = None  # override hooks directory (useful in tests)
     on_agent_ready: Callable[[Agent], None] | None = field(default=None, repr=False)
     _workdir: Path | None = field(default=None, init=False, repr=False)
@@ -200,20 +202,14 @@ class Job:
 
         try:
             await asyncio.wait_for(
-                plan_agent.run(
-                    prompt,
-                    resume_session_id=resume_id,
-                    system_prompt=PLAN_SYSTEM_PROMPT,
-                ),
+                self._spawn_worker(plan_agent, prompt, PLAN_SYSTEM_PROMPT, resume_id),
                 timeout=timeout,
             )
         except (TimeoutError, asyncio.TimeoutError):
             plan_agent.status = AgentStatus.FAILED
             raise RuntimeError(f"Plan phase timed out after {timeout}s (job {self.job_id})")
-        except CostLimitExceeded as exc:
-            logger.warning("job %s: plan agent killed by cost guard: %s", self.job_id, exc)
-            raise
 
+        # _spawn_worker already synced status from DB; fire hook if successful
         await self._db_upsert(plan_agent)
         await self._fire(
             POST_AGENT_DONE,
@@ -232,6 +228,82 @@ class Job:
             raise RuntimeError(f"Plan agent finished but {self.plan_path} was not written")
 
         logger.info("job %s: plan phase complete (%s)", self.job_id, self.plan_path)
+
+    async def _spawn_worker(
+        self,
+        agent: Agent,
+        prompt: str,
+        system_prompt: str,
+        resume_id: str | None,
+    ) -> None:
+        """Spawn agent as a detached subprocess worker; wait for completion.
+
+        When ``db_enabled=False`` (test mode or CLI mode), falls back to
+        running the agent in-process so tests can mock the SDK ``query``
+        function and no real subprocess is required.
+        """
+        if not self.db_enabled or not self._use_workers:
+            # In-process fallback (tests / CLI headless mode)
+            guard = self._make_guard()
+            agent.on_cost = self._make_on_cost(agent, guard)
+            try:
+                await agent.run(prompt, resume_session_id=resume_id, system_prompt=system_prompt)
+            except CostLimitExceeded as exc:
+                logger.warning("agent %s killed by cost guard: %s", agent.agent_id, exc)
+                raise
+            return
+
+        # ── subprocess path ────────────────────────────────────────────────
+        log_dir = Path(f"~/.claude-dispatch/jobs/{self.job_id}").expanduser()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{agent.spec.type.value}.log"
+        agent.log_path = str(log_path)
+
+        cmd = [
+            sys.executable, "-m", "claude_dispatch.worker",
+            "--job-id", self.job_id,
+            "--agent-type", agent.spec.type.value,
+            "--agent-id", agent.agent_id,
+            "--description", self.description,
+            "--instructions", self.instructions,
+            "--prompt", prompt,
+            "--log-path", str(log_path),
+            "--db-path", str(DB_FILE),
+        ]
+        if system_prompt:
+            cmd += ["--system-prompt", system_prompt]
+        if resume_id:
+            cmd += ["--resume-session-id", resume_id]
+        if agent.spec.cwd:
+            cmd += ["--cwd", agent.spec.cwd]
+        if agent.spec.model:
+            cmd += ["--model", agent.spec.model]
+        if agent.spec.mcp_config_path:
+            cmd += ["--mcp-config-path", agent.spec.mcp_config_path]
+
+        # Detach from parent so it survives TUI close
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            start_new_session=True,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+
+        returncode = await proc.wait()
+
+        # Read back final state from DB
+        rows = await list_agents(self.job_id)
+        row = next((r for r in rows if r["agent_type"] == agent.spec.type.value), None)
+        if row:
+            try:
+                agent.status = AgentStatus(row["status"])
+            except (ValueError, TypeError):
+                agent.status = AgentStatus.DONE if returncode == 0 else AgentStatus.FAILED
+            agent.session_id = row["session_id"] or agent.session_id
+            agent.cost_usd = row["cost_usd"] or agent.cost_usd
+        # Read log lines into memory so LogsScreen can show them
+        if log_path.exists():
+            agent.log_lines = log_path.read_text().splitlines()
 
     def _make_guard(self) -> CostGuard:
         return CostGuard(
@@ -337,14 +409,9 @@ class Job:
             exc: Exception | None = None
             async with sem:
                 try:
-                    await agent.run(
-                        prompt,
-                        resume_session_id=resume_id,
-                        system_prompt=EXECUTION_SYSTEM_PROMPT,
+                    await self._spawn_worker(
+                        agent, prompt, EXECUTION_SYSTEM_PROMPT, resume_id
                     )
-                except CostLimitExceeded as e:
-                    logger.warning("agent %s killed by cost guard: %s", agent.agent_id, e)
-                    exc = e
                 except Exception as e:
                     logger.exception("agent %s failed", agent.agent_id)
                     exc = e
@@ -431,11 +498,20 @@ class Job:
             return False
 
         if target.status == AgentStatus.RUNNING:
-            # Inbox — picked up at the next turn boundary inside Agent.run()
-            target.send_message(message)
+            if target.log_path is not None:
+                # Subprocess worker — queue via DB; worker polls between turns
+                from claude_dispatch.db import enqueue_message
+                asyncio.create_task(
+                    enqueue_message(self.job_id, target.spec.type.value, message)
+                )
+            else:
+                # In-process coroutine (e.g. dispatcher) — direct inbox injection
+                target.send_message(message)
         else:
-            # Resume a finished agent in a background task
-            guard = self._make_guard()
-            target.on_cost = self._make_on_cost(target, guard)
-            asyncio.create_task(target.run(message, resume_session_id=target.session_id))
+            # Resume a finished agent as a new subprocess worker
+            prompt = message
+            resume_id = target.session_id
+            asyncio.create_task(
+                self._spawn_worker(target, prompt, EXECUTION_SYSTEM_PROMPT, resume_id)
+            )
         return True

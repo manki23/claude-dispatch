@@ -120,6 +120,9 @@ class Agent:
     last_action: str = ""
     log_lines: list[str] = field(default_factory=list)
 
+    # Path to log file on disk (set when agent runs as subprocess worker)
+    log_path: str | None = None
+
     # Optional callbacks for live TUI updates
     on_log: Callable[[str], None] | None = field(default=None, repr=False)
     on_cost: Callable[[float], None] | None = field(default=None, repr=False)

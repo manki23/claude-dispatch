@@ -48,7 +48,7 @@ class AgentsScreen(Screen):
 
     def on_mount(self) -> None:
         table = self.query_one("#agents-table", DataTable)
-        table.add_columns("TYPE", "MODEL", "STATUS", "COST", "LAST ACTION")
+        table.add_columns("TYPE", "MODEL", "STATUS", "COST", "SESSION", "LAST ACTION")
         self._refresh_table()
         self.set_interval(1.0, self._refresh_table)
         self.set_interval(1.0, self._refresh_header)
@@ -66,11 +66,15 @@ class AgentsScreen(Screen):
         cursor_row = table.cursor_row
         table.clear()
         for agent in self._job.agents:
+            session_display = (
+                f"[dim]{agent.session_id[:12]}…[/dim]" if agent.session_id else "[dim]—[/dim]"
+            )
             table.add_row(
                 agent.spec.type.value,
                 agent.model,
                 _STATUS_ICONS.get(agent.status, agent.status.value),
                 f"${agent.cost_usd:.4f}",
+                session_display,
                 agent.last_action or "[dim]—[/dim]",
                 key=agent.agent_id,
             )
